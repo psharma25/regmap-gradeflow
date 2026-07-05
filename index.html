@@ -648,10 +648,12 @@ function renderSide(sheet,si,overlay){
     p._ax=ax; p._ay=cy; // remember for overlay
     // overlay marks
     if(overlay && p.correct!==null){
-      x.strokeStyle='#C9403A'; x.fillStyle='#C9403A'; x.lineWidth=7; x.lineCap='round';
+      x.lineWidth=7; x.lineCap='round';
       if(p.correct){
+        x.strokeStyle='#1E9E5A';
         x.beginPath(); x.moveTo(ax+165,cy-8); x.lineTo(ax+185,cy+14); x.lineTo(ax+225,cy-44); x.stroke();
       }else{
+        x.strokeStyle='#C9403A'; x.fillStyle='#C9403A';
         x.beginPath(); x.ellipse(ax+70,cy-16,95,44,(r()-.5)*.1,0,7); x.stroke();
         x.font='700 34px system-ui,sans-serif';
         x.fillText('→ '+p.expected, ax+8, cy+52);
@@ -674,6 +676,113 @@ function renderSide(sheet,si,overlay){
 function sideDataUrl(sheet,si,overlay,q){
   if(!HAS_CANVAS)return '';
   try{return renderSide(sheet,si,overlay).toDataURL('image/jpeg',q||0.85);}catch(e){return '';}
+}
+
+/* ══════════════ uploaded-scan graded overlay ══════════════
+   Composites correct/incorrect marks + corrections directly onto the scanned
+   worksheet. Lives in memory only (blob: scans are session-scoped anyway), so
+   nothing large is written to localStorage. */
+const OVL={}; // sheet.id+'|'+si -> {url,w,h}
+function ovlKey(id,si){return id+'|'+si;}
+function ovlUrl(sheet,si){const o=OVL[ovlKey(sheet.id,si)];return o?o.url:null;}
+function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('image load failed'));im.src=src;});}
+
+function drawScanOverlay(img,natW,natH,sheet,si){
+  const problems=(sheet.sides[si]&&sheet.sides[si].problems)||[];
+  const scale=Math.min(1,1600/Math.max(natW,natH||1));           // cap for memory/print
+  const iw=Math.max(1,Math.round(natW*scale)), ih=Math.max(1,Math.round(natH*scale));
+  const rowH=Math.max(24,Math.round(iw*0.026));                  // corrections band metrics
+  const bandH=Math.round(rowH*2.4)+rowH*Math.ceil(Math.max(problems.length,1)/2)+Math.round(rowH*0.8);
+  const c=document.createElement('canvas'); c.width=iw; c.height=ih+bandH;
+  const x=c.getContext('2d'); if(!x)return c;
+  x.fillStyle='#FFFFFF'; x.fillRect(0,0,c.width,c.height);
+  x.drawImage(img,0,0,iw,ih);
+
+  // score stamp, top-right of the scan
+  if(sheet.score!==null){
+    const R=Math.round(iw*0.075), sx=iw-R-Math.round(iw*0.045), sy=R+Math.round(iw*0.045);
+    x.save(); x.translate(sx,sy); x.rotate(-0.1);
+    x.strokeStyle='#C9403A'; x.lineWidth=Math.max(3,iw*0.006);
+    x.beginPath(); x.arc(0,0,R,0,7); x.stroke();
+    x.fillStyle='#C9403A'; x.font='800 '+Math.round(R*0.85)+'px Georgia,serif';
+    x.textAlign='center'; x.textBaseline='middle'; x.fillText(String(sheet.score),0,2); x.restore();
+    x.textAlign='left'; x.textBaseline='alphabetic';
+  }
+
+  // inline marks on the scan where OCR gave us a box (best-effort placement)
+  problems.forEach(p=>{
+    if(!p.box)return;
+    const b=p.box, bx=b.x0*scale, by=b.y0*scale, bw=(b.x1-b.x0)*scale, bh=(b.y1-b.y0)*scale;
+    const cx=bx+bw+Math.round(iw*0.012), cy=by+bh/2;
+    x.lineWidth=Math.max(3,iw*0.005); x.lineCap='round';
+    if(p.correct){
+      x.strokeStyle='#1E9E5A';
+      x.beginPath(); x.moveTo(cx,cy); x.lineTo(cx+bh*0.35,cy+bh*0.4); x.lineTo(cx+bh*0.95,cy-bh*0.55); x.stroke();
+    }else{
+      x.strokeStyle='#C9403A';
+      x.beginPath(); x.ellipse(bx+bw/2,by+bh/2,bw*0.72+6,bh*0.7+4,0,0,7); x.stroke();
+      x.fillStyle='#C9403A'; x.font='700 '+Math.max(14,Math.round(bh*0.85))+'px system-ui,sans-serif';
+      x.fillText('\u2192 '+p.expected, cx, by+bh);
+    }
+  });
+
+  // corrections band (always present, authoritative — correct answers shown even without boxes)
+  const by0=ih, wrongN=problems.filter(p=>p.correct===false).length, tot=problems.length, right=tot-wrongN;
+  x.fillStyle='#F7F5EF'; x.fillRect(0,by0,iw,bandH);
+  x.fillStyle='#C9403A'; x.fillRect(0,by0,Math.max(4,Math.round(iw*0.012)),bandH);
+  x.fillStyle='#1D2A35'; x.font='700 '+Math.round(rowH*0.82)+'px system-ui,sans-serif';
+  x.fillText('Grading — '+right+' / '+tot+' correct'+(sheet.score!==null?'   ·   score '+sheet.score:''), Math.round(iw*0.035), by0+rowH*1.2);
+  x.font=Math.round(rowH*0.72)+'px system-ui,sans-serif';
+  const col=[Math.round(iw*0.035), Math.round(iw*0.52)];
+  problems.forEach((p,i)=>{
+    const cxp=col[i%2], cyp=by0+rowH*2.15+Math.floor(i/2)*rowH;
+    if(p.correct){ x.fillStyle='#1E9E5A'; x.fillText('#'+p.n+'   \u2713   '+p.ocr, cxp, cyp); }
+    else{ x.fillStyle='#C9403A'; x.fillText('#'+p.n+'   \u2717   '+(p.ocr==null?'?':p.ocr)+'   \u2192   '+p.expected, cxp, cyp); }
+  });
+  x.fillStyle='#8A97A2'; x.font=Math.round(rowH*0.58)+'px ui-monospace,monospace';
+  x.fillText('GF-ALPHA · engine deterministic-v0.3 · graded '+(sheet.gradedAt||'').slice(0,10)+' · side '+(si?'B':'A'), Math.round(iw*0.035), by0+bandH-Math.round(rowH*0.55));
+  return c;
+}
+async function buildOverlays(sheet){
+  if(!HAS_CANVAS)return;
+  for(let si=0;si<sheet.sides.length;si++){
+    const sd=sheet.sides[si]; if(!sd||!sd.imageUrl)continue;
+    try{
+      const img=await loadImg(sd.imageUrl);
+      const c=drawScanOverlay(img,img.naturalWidth||img.width,img.naturalHeight||img.height,sheet,si);
+      OVL[ovlKey(sheet.id,si)]={url:c.toDataURL('image/jpeg',0.9),w:c.width,h:c.height};
+    }catch(e){ /* leave the raw scan if compositing fails */ }
+  }
+}
+
+/* group OCR words into lines and attach each answer's bounding box (Tesseract path) */
+function collectWords(data){
+  const out=[]; const pushW=w=>{ if(w&&w.text&&w.bbox) out.push({text:String(w.text),bbox:w.bbox}); };
+  if(Array.isArray(data.words)&&data.words.length) data.words.forEach(pushW);
+  else if(Array.isArray(data.blocks)) data.blocks.forEach(b=>(b.paragraphs||[]).forEach(pg=>(pg.lines||[]).forEach(ln=>(ln.words||[]).forEach(pushW))));
+  return out;
+}
+function parseOcrProblemsFromWords(words,fallbackText){
+  if(!words||!words.length) return {problems:parseOcrProblems(fallbackText||'')};
+  const lines=[];
+  words.forEach(w=>{
+    const cy=(w.bbox.y0+w.bbox.y1)/2, h=Math.max(1,w.bbox.y1-w.bbox.y0);
+    let ln=lines.find(L=>Math.abs(L.cy-cy)<h*0.7);
+    if(!ln){ ln={cy,words:[]}; lines.push(ln); }
+    ln.words.push(w); ln.cy=(ln.cy*(ln.words.length-1)+cy)/ln.words.length;
+  });
+  lines.forEach(L=>L.words.sort((a,b)=>a.bbox.x0-b.bbox.x0));
+  const re=/(\d{1,4})\s*([+xX×*÷\/\-−])\s*(\d{1,4})\s*=\s*(\d{1,4})/;
+  const out=[]; let n=1;
+  lines.forEach(L=>{
+    const txt=L.words.map(w=>w.text).join(' ');
+    const m=txt.match(re); if(!m) return;
+    const op=m[2].replace('X','x').replace('−','-');
+    let box=null;
+    for(let i=L.words.length-1;i>=0;i--){ if(L.words[i].text.replace(/[^0-9]/g,'')===m[4]){ box=L.words[i].bbox; break; } }
+    out.push({n:n++,q:m[1]+' '+op+' '+m[3]+' =',written:m[4],box});
+  });
+  return out.length?{problems:out}:{problems:parseOcrProblems(fallbackText||'')};
 }
 
 /* ══════════════ intake / uploads ══════════════ */
@@ -739,7 +848,7 @@ function sheetSummary(s){
 function cardHtml(s){
   const th=s.source==='synthetic'
     ?`<img alt="worksheet ${s.id}" src="${sideDataUrl(s,0,s.status==='graded',0.55)}">`
-    :(s.thumb?`<img alt="uploaded scan ${s.id}" src="${s.thumb}">`:'<span style="color:#8A97A2;font-size:12px">uploaded scan</span>');
+    :((s.status==='graded'&&ovlUrl(s,0))?`<img alt="graded scan ${s.id}" src="${ovlUrl(s,0)}">`:(s.thumb?`<img alt="uploaded scan ${s.id}" src="${s.thumb}">`:'<span style="color:#8A97A2;font-size:12px">uploaded scan</span>'));
   const open=(s.status==='graded'&&!s.archived)?`<button class="open" onclick="openSheet('${s.id}')">Open · print / save / email</button>`:'';
   return `<div class="card ${state.sel.has(s.id)?'sel':''}" data-id="${s.id}">
     <label class="ck" title="Select this sheet"><input type="checkbox" ${state.sel.has(s.id)?'checked':''} aria-label="Select ${s.id}" onchange="toggleSel('${s.id}',this.checked)"></label>
@@ -1067,8 +1176,10 @@ function parseOcrProblems(text){
 }
 async function browserOcrSide(imageUrl){
   const w=await getBocrWorker();
-  const {data}=await w.recognize(imageUrl);
-  const problems=parseOcrProblems(data.text||'');
+  let data;
+  try{ ({data}=await w.recognize(imageUrl,{},{text:true,blocks:true})); } // request geometry
+  catch(e){ ({data}=await w.recognize(imageUrl)); }                        // older API fallback
+  const {problems}=parseOcrProblemsFromWords(collectWords(data),data.text||'');
   return {problems,conf:(data.confidence||0)/100};
 }
 
@@ -1190,8 +1301,9 @@ async function runAgent(){
     await wait(300); setStage('grade','ok');
     log(sheet.id+' → graded: '+correct+'/'+total+' · score '+sheet.score+(wrong.length?' · wrong: #'+wrong.join(', #'):' · perfect'), wrong.length?'wr':'ok');
 
-    setStage('print','run'); agentGuide(who+': compositing red marks and the score stamp onto the original…',true);
-    log(sheet.id+' → overlay composited (marks + score stamp) · spool ready'); await wait(300); setStage('print','ok');
+    setStage('print','run'); agentGuide(who+': compositing marks, corrections and the score stamp onto the original…',true);
+    if(sheet.source!=='synthetic'){ try{ await buildOverlays(sheet); }catch(e){} }
+    log(sheet.id+' → overlay composited (✓/✗ marks + corrections + score stamp) · spool ready'); await wait(300); setStage('print','ok');
     setStage('return','run'); agentGuide(who+': returning sheet — scored '+sheet.score+'.',true); await wait(200); setStage('return','ok');
 
     sheet.status='graded'; state.rel++; updateRel();
@@ -1279,7 +1391,8 @@ function selectSheet(id){
     });
   }else{
     s.sides.forEach((sd,si)=>{
-      const img=document.createElement('img'); img.alt='Uploaded scan side '+(si?'B':'A'); img.src=sd.imageUrl; pv.appendChild(img);
+      const u=ovlUrl(s,si)||sd.imageUrl;
+      const img=document.createElement('img'); img.alt=(ovlUrl(s,si)?'Graded overlay':'Uploaded scan')+' side '+(si?'B':'A'); img.src=u; pv.appendChild(img);
     });
   }
   renderJobLog();
@@ -1303,7 +1416,7 @@ function doPrint(){
   const s=state.sheets.find(x=>x.id===state.selected);
   if(!s){alert('Select a graded sheet first.');return;}
   const pa=$('#printArea'); pa.innerHTML='';
-  const srcs=s.source==='synthetic'?s.sides.map((_,si)=>sideDataUrl(s,si,true,0.92)):s.sides.map(sd=>sd.imageUrl);
+  const srcs=s.source==='synthetic'?s.sides.map((_,si)=>sideDataUrl(s,si,true,0.92)):s.sides.map((sd,si)=>ovlUrl(s,si)||sd.imageUrl);
   srcs.forEach(u=>{const img=document.createElement('img');img.src=u;pa.appendChild(img);});
   jobEntry('PRINT');
   log('Print job spooled: '+s.id+' → queue '+$('#oPrinter').value+' (routing confirmed in system dialog on alpha rig)','ok');
@@ -1317,12 +1430,12 @@ function buildPdf(pages){ // pages:[{jpeg:Uint8Array,w,h}]
   const put=x=>{const b=typeof x==='string'?enc.encode(x):x;chunks.push(b);pos+=b.length;};
   const obj=(n,body)=>{offs[n]=pos;put(n+' 0 obj\n'+body+'\nendobj\n');};
   put('%PDF-1.4\n%âãÏÓ\n');
-  const Wpt=396,Hpt=612; // 5.5×8.5in
   const kids=pages.map((_,i)=>(3+i*3)+' 0 R').join(' ');
   obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
   obj(2,'<< /Type /Pages /Count '+pages.length+' /Kids ['+kids+'] >>');
   pages.forEach((p,i)=>{
     const pn=3+i*3,cn=4+i*3,xn=5+i*3;
+    const Wpt=396, Hpt=Math.round(396*((p.h||1700)/(p.w||1100))); // fixed width, preserve each page's aspect
     obj(pn,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${Wpt} ${Hpt}] /Resources << /XObject << /Im0 ${xn} 0 R >> >> /Contents ${cn} 0 R >>`);
     const cs=`q ${Wpt} 0 0 ${Hpt} 0 0 cm /Im0 Do Q`;
     obj(cn,'<< /Length '+cs.length+' >>\nstream\n'+cs+'\nendstream');
@@ -1338,14 +1451,21 @@ function buildPdf(pages){ // pages:[{jpeg:Uint8Array,w,h}]
   return new Blob(chunks,{type:'application/pdf'});
 }
 
-function doSave(){
+async function doSave(){
   const s=state.sheets.find(x=>x.id===state.selected);
   if(!s){alert('Select a graded sheet first.');return;}
-  if(s.source!=='synthetic'){alert('PDF re-export of uploaded scans lands in M3 (needs rectified page geometry). Use Print for now.');return;}
-  const pages=s.sides.map((_,si)=>{
-    const c=renderSide(s,si,true);
-    return {jpeg:dataUrlToBytes(c.toDataURL('image/jpeg',0.9)),w:c.width,h:c.height};
-  });
+  let pages;
+  if(s.source==='synthetic'){
+    pages=s.sides.map((_,si)=>{ const c=renderSide(s,si,true); return {jpeg:dataUrlToBytes(c.toDataURL('image/jpeg',0.9)),w:c.width,h:c.height}; });
+  }else{
+    await buildOverlays(s); // ensure graded overlays exist (marks + corrections)
+    pages=[];
+    for(let si=0;si<s.sides.length;si++){
+      const o=OVL[ovlKey(s.id,si)];
+      if(o) pages.push({jpeg:dataUrlToBytes(o.url),w:o.w,h:o.h});
+    }
+    if(!pages.length){ alert('Could not composite the graded overlay for this scan — use Print instead.'); return; }
+  }
   const blob=buildPdf(pages);
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=s.id+'_'+(s.studentId||'NA')+'_graded.pdf'; a.click();
@@ -1463,7 +1583,12 @@ async function downloadSelected(scope){
       s.sides.forEach((_,si)=>{ const c=renderSide(s,si,s.status==='graded');
         pages.push({jpeg:dataUrlToBytes(c.toDataURL('image/jpeg',0.9)),w:c.width,h:c.height}); });
     }else{
-      for(const sd of s.sides){ const p=await uploadPage(sd.imageUrl); if(p)pages.push(p); else skipped++; }
+      if(s.status==='graded' && !OVL[ovlKey(s.id,0)]){ try{ await buildOverlays(s); }catch(e){} }
+      for(let si=0;si<s.sides.length;si++){
+        const o=OVL[ovlKey(s.id,si)];
+        if(o){ pages.push({jpeg:dataUrlToBytes(o.url),w:o.w,h:o.h}); }
+        else { const p=await uploadPage(s.sides[si].imageUrl); if(p)pages.push(p); else skipped++; }
+      }
     }
   }
   if(!pages.length){ alert('None of the selected sheets could be rendered.'); return; }
