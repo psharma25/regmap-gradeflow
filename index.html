@@ -278,7 +278,7 @@ footer b{color:#CFE0EA}
   </div>
   <div class="badges">
     <span class="badge alpha">ALPHA · M2</span>
-    <span class="badge" title="Wrong answers are ringed in red only — the correct answer is never shown.">BUILD · mark-only (no answers shown)</span>
+    <span class="badge" title="Wrong answers are crossed in red only — the correct answer is never shown.">BUILD · mark-only (no answers shown)</span>
     <span class="badge">TARGET 2026-06-30</span>
     <span class="badge priv">IDs ONLY — NO STUDENT NAMES STORED</span>
     <button id="themeBtn" title="Toggle dark background" aria-label="Switch to dark background" style="width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:transparent;color:#CFE0EA;font-size:14px;line-height:1;padding:0">☾</button>
@@ -523,8 +523,8 @@ const state={
 function saveState(){
   try{
     const slim=state.sheets.filter(s=>s.source==='synthetic').map(s=>({
-      id:s.id,studentId:s.studentId,setCode:s.setCode,level:s.level,seed:s.seed,archived:!!s.archived,
-      examDate:s.examDate,status:s.status,score:s.score,wrong:s.wrong,gradedAt:s.gradedAt
+      id:s.id,studentId:s.studentId,setCode:s.setCode,level:s.level,seed:s.seed,archived:!!s.archived,resub:!!s.resub,
+      examDate:s.examDate,status:s.status,score:s.score,wrong:s.wrong,corrected:s.corrected,gradedAt:s.gradedAt
     }));
     localStorage.setItem('gfalpha',JSON.stringify({slim,rel:state.rel,jobLog:state.jobLog.slice(-40),nextId:state.nextId,
       view:state.view,printer:$('#oPrinter')?$('#oPrinter').value:'system'}));
@@ -538,8 +538,8 @@ function loadState(){
     if(d.view) state.view=d.view;
     if(d.printer&&$('#oPrinter'))$('#oPrinter').value=d.printer;
     (d.slim||[]).forEach(m=>{
-      const sh=buildSyntheticSheet(m.studentId,m.level,m.setCode,m.seed,m.examDate);
-      Object.assign(sh,{id:m.id,status:m.status,score:m.score,wrong:m.wrong,gradedAt:m.gradedAt,archived:!!m.archived});
+      const sh=buildSyntheticSheet(m.studentId,m.level,m.setCode,m.seed,m.examDate,m.resub);
+      Object.assign(sh,{id:m.id,status:m.status,score:m.score,wrong:m.wrong,corrected:m.corrected,gradedAt:m.gradedAt,archived:!!m.archived});
       state.sheets.push(sh);
     });
     return state.sheets.length>0;
@@ -560,25 +560,30 @@ function wrongify(correct,r){
   return w;
 }
 
-function buildSyntheticSheet(studentId,level,setCode,seed,examDate){
+function buildSyntheticSheet(studentId,level,setCode,seed,examDate,resub){
   const r=mulberry32(seed);
-  const skill=0.80+r()*0.17; // per-sheet accuracy prior
+  const skill=resub?(0.60+r()*0.15):(0.80+r()*0.17); // resubs had a rougher first pass
   const sides=[0,1].map(si=>{
     const problems=[];
     for(let i=0;i<10;i++){
       const p=LEVELS[level].make(r);
       const isWrong=r()>skill;
-      const written=isWrong?wrongify(p.ans,r):p.ans;
-      problems.push({n:si*10+i+1,q:p.q,expected:p.ans,written,ocr:null,conf:null,correct:null});
+      if(resub&&isWrong){
+        // previously wrong (red ✗ on the sheet) — student has written the corrected answer
+        problems.push({n:si*10+i+1,q:p.q,expected:p.ans,written:p.ans,prevWritten:wrongify(p.ans,r),wasWrong:true,ocr:null,conf:null,correct:null});
+      }else{
+        const written=isWrong?wrongify(p.ans,r):p.ans;
+        problems.push({n:si*10+i+1,q:p.q,expected:p.ans,written,ocr:null,conf:null,correct:null});
+      }
     }
     return{problems};
   });
-  return{id:'WS-'+String(state.nextId++).padStart(4,'0'),studentId,level,setCode,seed,examDate,
-    source:'synthetic',sides,status:'queued',score:null,wrong:null,gradedAt:null};
+  return{id:'WS-'+String(state.nextId++).padStart(4,'0'),studentId,level,setCode,seed,examDate,resub:!!resub,
+    source:'synthetic',sides,status:'queued',score:null,wrong:null,corrected:null,gradedAt:null};
 }
 
 async function loadSyntheticBatch(){
-  if(state.sheets.some(s=>s.source==='synthetic') && !(await appConfirm('Add another sample batch?','A sample batch is already loaded. Add 6 more sample sheets?','Add 6 more'))) return;
+  if(state.sheets.some(s=>s.source==='synthetic') && !(await appConfirm('Add another sample batch?','A sample batch is already loaded. Add 8 more sample sheets?','Add 8 more'))) return;
   const today=new Date();
   const students=['STU-001','STU-002','STU-003'];
   const plans=[['B','B 141 a'],['B','B 142 a'],['C','C 87 a'],['C','C 88 a'],['D','D 21 a'],['D','D 22 a']];
@@ -591,13 +596,18 @@ async function loadSyntheticBatch(){
       k++;
     }
   });
+  // resubmissions: sheets already graded once (red ✗ marks visible) with corrected answers written in —
+  // grading these circles each corrected answer in green.
+  const d2=new Date(today); d2.setDate(d2.getDate()-2);
+  state.sheets.push(buildSyntheticSheet('STU-001','B','B 140 a · resub',77001,d2.toISOString().slice(0,10),true));
+  state.sheets.push(buildSyntheticSheet('STU-003','D','D 20 a · resub',77003,d2.toISOString().slice(0,10),true));
   state.__ingesting=true;
-  setIntakeGuide('queue','run','Generating 6 sample worksheets (levels B/C/D, duplex)…',true);
+  setIntakeGuide('queue','run','Generating 8 sample worksheets (levels B/C/D, duplex, incl. 2 corrected resubmissions)…',true);
   renderQueue(); saveState();
   state.__ingesting=false;
-  setIntakeGuide('ready','ok','6 sample sheets queued — ready for step 2 · Grade.',false);
-  log('Loaded synthetic batch: 6 sheets · 3 student IDs · levels B/C/D · duplex (A+B sides).','ok');
-  showToast('Sample batch loaded — 6 sheets are queued below, ready for step 2 · Grade.');
+  setIntakeGuide('ready','ok','8 sample sheets queued (2 are corrected resubmissions) — ready for step 2 · Grade.',false);
+  log('Loaded synthetic batch: 8 sheets · 3 student IDs · levels B/C/D · duplex (A+B sides) · 2 resubmissions carrying prior ✗ marks with corrected answers.','ok');
+  showToast('Sample batch loaded — 8 sheets queued (2 corrected resubmissions), ready for step 2 · Grade.');
   pulseCount('#cQ');
 }
 
@@ -647,15 +657,49 @@ function renderSide(sheet,si,overlay){
     x.font='58px "Comic Sans MS",cursive'; x.fillStyle='#39415C';
     x.fillText(String(p.written),0,0); x.restore();
     p._ax=ax; p._ay=cy; // remember for overlay
+    // prior grading marks baked into the INPUT sheet (resubmission): last pass's red ✗
+    // in the margin + the old wrong answer struck through, corrected answer on the line
+    if(p.wasWrong){
+      x.save();
+      // old wrong answer, small, pencil-struck
+      x.globalAlpha=0.55; x.font='34px "Comic Sans MS",cursive'; x.fillStyle='#6B7280';
+      x.save(); x.translate(ax+22,cy-62); x.rotate((r()-.5)*.08); x.fillText(String(p.prevWritten),0,0);
+      const pw=x.measureText(String(p.prevWritten)).width;
+      x.strokeStyle='#6B7280'; x.lineWidth=3; x.beginPath(); x.moveTo(-4,-10); x.lineTo(pw+4,-14); x.stroke();
+      x.restore();
+      // faded red ✗ from the previous grading pass, in the margin zone
+      x.globalAlpha=0.5; x.strokeStyle='#C9403A'; x.lineWidth=6; x.lineCap='round';
+      x.beginPath();
+      x.moveTo(ax+168,cy-46); x.lineTo(ax+222,cy+12);
+      x.moveTo(ax+222,cy-46); x.lineTo(ax+168,cy+12);
+      x.stroke();
+      x.restore();
+    }
     // overlay marks
     if(overlay && p.correct!==null){
       x.lineWidth=7; x.lineCap='round';
       if(p.correct){
-        x.strokeStyle='#1E9E5A';
-        x.beginPath(); x.moveTo(ax+165,cy-8); x.lineTo(ax+185,cy+14); x.lineTo(ax+225,cy-44); x.stroke();
+        if(p.wasWrong){
+          // corrected after a prior ✗ — green circle drawn snugly over the corrected answer
+          x.save();
+          x.font='58px "Comic Sans MS",cursive';
+          const aw=x.measureText(String(p.written)).width;
+          const rx=Math.max(38, aw/2+18), ry=34;
+          x.strokeStyle='#1E9E5A';
+          x.beginPath(); x.ellipse(ax+18+aw/2,cy-16,rx,ry,(r()-.5)*.08,0,7); x.stroke();
+          x.restore();
+        }else{
+          x.strokeStyle='#1E9E5A';
+          x.beginPath(); x.moveTo(ax+165,cy-8); x.lineTo(ax+185,cy+14); x.lineTo(ax+225,cy-44); x.stroke();
+        }
       }else{
         x.strokeStyle='#C9403A'; x.fillStyle='#C9403A';
-        x.beginPath(); x.ellipse(ax+70,cy-16,95,44,(r()-.5)*.1,0,7); x.stroke();
+        const jx=(r()-.5)*6, jy=(r()-.5)*6; // slight hand-drawn jitter
+        // X sits to the right of the answer line (same zone as the check), never over the answer
+        x.beginPath();
+        x.moveTo(ax+168+jx,cy-46+jy); x.lineTo(ax+222,cy+12);
+        x.moveTo(ax+222+jx,cy-46+jy); x.lineTo(ax+168,cy+12);
+        x.stroke();
       }
     }
   });
@@ -715,11 +759,22 @@ function drawScanOverlay(img,natW,natH,sheet,si){
     const cx=bx+bw+Math.round(iw*0.012), cy=by+bh/2;
     x.lineWidth=Math.max(3,iw*0.005); x.lineCap='round';
     if(p.correct){
-      x.strokeStyle='#1E9E5A';
-      x.beginPath(); x.moveTo(cx,cy); x.lineTo(cx+bh*0.35,cy+bh*0.4); x.lineTo(cx+bh*0.95,cy-bh*0.55); x.stroke();
+      if(p.wasWrong){
+        // corrected after a prior ✗ — green circle drawn around the corrected answer
+        x.strokeStyle='#1E9E5A';
+        x.beginPath(); x.ellipse(bx+bw/2,by+bh/2,bw*0.72+6,bh*0.7+4,0,0,7); x.stroke();
+      }else{
+        x.strokeStyle='#1E9E5A';
+        x.beginPath(); x.moveTo(cx,cy); x.lineTo(cx+bh*0.35,cy+bh*0.4); x.lineTo(cx+bh*0.95,cy-bh*0.55); x.stroke();
+      }
     }else{
       x.strokeStyle='#C9403A';
-      x.beginPath(); x.ellipse(bx+bw/2,by+bh/2,bw*0.72+6,bh*0.7+4,0,0,7); x.stroke();
+      // X placed to the right of the answer box (same anchor as the check) so it never covers the answer
+      const s=bh*0.85, xx=cx, yy=cy-s/2;
+      x.beginPath();
+      x.moveTo(xx,yy);   x.lineTo(xx+s,yy+s);
+      x.moveTo(xx+s,yy); x.lineTo(xx,yy+s);
+      x.stroke();
     }
   });
 
@@ -733,7 +788,10 @@ function drawScanOverlay(img,natW,natH,sheet,si){
   const col=[Math.round(iw*0.035), Math.round(iw*0.52)];
   problems.forEach((p,i)=>{
     const cxp=col[i%2], cyp=by0+rowH*2.15+Math.floor(i/2)*rowH;
-    if(p.correct){ x.fillStyle='#1E9E5A'; x.fillText('#'+p.n+'   \u2713   '+p.ocr, cxp, cyp); }
+    if(p.correct){
+      if(p.wasWrong){ x.fillStyle='#1E9E5A'; x.fillText('#'+p.n+'   \u25EF   corrected \u2192 '+p.ocr, cxp, cyp); }
+      else{ x.fillStyle='#1E9E5A'; x.fillText('#'+p.n+'   \u2713   '+p.ocr, cxp, cyp); }
+    }
     else{ x.fillStyle='#C9403A'; x.fillText('#'+p.n+'   \u2717   '+(p.ocr==null?'?':p.ocr), cxp, cyp); }
   });
   x.fillStyle='#8A97A2'; x.font=Math.round(rowH*0.58)+'px ui-monospace,monospace';
@@ -1104,7 +1162,7 @@ async function getVlm(){
   log('In-browser model loaded: '+id+' on '+device,'ok');
   return vlm;
 }
-const VLM_PROMPT='Read every arithmetic problem and its handwritten answer on this worksheet scan. Respond ONLY with JSON: {"problems":[{"n":1,"q":"37 + 48 =","written":"85"}]} using symbols + - x / in q.';
+const VLM_PROMPT='Read every arithmetic problem and its handwritten answer on this worksheet scan. If a problem has a red X or red cross mark from a previous grading pass next to it AND a corrected answer has been written in, set "was_wrong":true for that problem. Respond ONLY with JSON: {"problems":[{"n":1,"q":"37 + 48 =","written":"85","was_wrong":false}]} using symbols + - x / in q.';
 async function vlmOcrSide(imageUrl){
   const {t,processor,model}=await getVlm();
   const image=await t.RawImage.fromURL(imageUrl);
@@ -1117,7 +1175,7 @@ async function vlmOcrSide(imageUrl){
   let problems=[];
   try{ const j=JSON.parse(out.slice(out.indexOf('{'),out.lastIndexOf('}')+1)); problems=(j.problems||[]); }
   catch(e){ problems=parseOcrProblems(out); }
-  return problems.map((p,i)=>({n:p.n||i+1,q:String(p.q||''),written:p.written,ocr:String(p.written),conf:0.85,expected:evalExpr(String(p.q||'')),correct:null}))
+  return problems.map((p,i)=>({n:p.n||i+1,q:String(p.q||''),written:p.written,ocr:String(p.written),conf:0.85,expected:evalExpr(String(p.q||'')),wasWrong:!!(p.was_wrong||p.wasWrong),correct:null}))
     .filter(p=>p.expected!==null&&p.written!=='?');
 }
 
@@ -1132,7 +1190,7 @@ async function cloudOcrSide(imageUrl){
   if(!r.ok) throw new Error('proxy HTTP '+r.status);
   const out=await r.json();
   if(out.error) throw new Error(out.error);
-  return (out.problems||[]).map((p,i)=>({n:p.n||i+1,q:String(p.q||''),written:p.written,ocr:String(p.written),conf:0.92,expected:evalExpr(String(p.q||'')),correct:null}));
+  return (out.problems||[]).map((p,i)=>({n:p.n||i+1,q:String(p.q||''),written:p.written,ocr:String(p.written),conf:0.92,expected:evalExpr(String(p.q||'')),wasWrong:!!(p.was_wrong||p.wasWrong),correct:null}));
 }
 async function testCloud(){
   const ep=($('#cloudUrl').value||'').replace(/\/$/,'');
@@ -1172,6 +1230,8 @@ function parseOcrProblems(text){
   return out;
 }
 async function browserOcrSide(imageUrl){
+  // NOTE: plain-text OCR tier — cannot see color, so prior red ✗ marks are not detected here.
+  // Prior-cross → green-circle handling requires the vision-model or cloud tier (was_wrong flag).
   const w=await getBocrWorker();
   let data;
   try{ ({data}=await w.recognize(imageUrl,{},{text:true,blocks:true})); } // request geometry
@@ -1287,16 +1347,20 @@ async function runAgent(){
 
     setStage('grade','run');
     agentGuide(who+': comparing every detected answer against the computed result (deterministic engine)…',true);
-    let correct=0,total=0; const wrong=[];
+    let correct=0,total=0; const wrong=[],corrected=[];
     sheet.sides.forEach(sd=>sd.problems.forEach(p=>{
       if(p.expected==null) p.expected=evalExpr(p.q);
       p.correct = String(p.ocr)===String(p.expected);
-      total++; if(p.correct)correct++; else wrong.push(p.n);
+      total++;
+      if(p.correct){ correct++; if(p.wasWrong)corrected.push(p.n); }
+      else wrong.push(p.n);
     }));
     sheet.score=Math.round(100*correct/Math.max(1,total));
-    sheet.wrong=wrong; sheet.gradedAt=new Date().toISOString();
+    sheet.wrong=wrong; sheet.corrected=corrected; sheet.gradedAt=new Date().toISOString();
     await wait(300); setStage('grade','ok');
-    log(sheet.id+' → graded: '+correct+'/'+total+' · score '+sheet.score+(wrong.length?' · wrong: #'+wrong.join(', #'):' · perfect'), wrong.length?'wr':'ok');
+    log(sheet.id+' → graded: '+correct+'/'+total+' · score '+sheet.score
+      +(wrong.length?' · wrong: #'+wrong.join(', #'):' · perfect')
+      +(corrected.length?' · corrected after prior ✗ (green-circled): #'+corrected.join(', #'):''), wrong.length?'wr':'ok');
 
     setStage('print','run'); agentGuide(who+': compositing marks, corrections and the score stamp onto the original…',true);
     if(sheet.source!=='synthetic'){ try{ await buildOverlays(sheet); }catch(e){} }
@@ -1377,7 +1441,8 @@ function selectSheet(id){
   const s=state.sheets.find(x=>x.id===id); if(!s)return;
   renderSheetList();
   $('#oDate').value=s.examDate||'';
-  const wrong=s.wrong&&s.wrong.length?('wrong: #'+s.wrong.join(', #')):'perfect — no corrections';
+  const wrong=(s.wrong&&s.wrong.length?('wrong: #'+s.wrong.join(', #')):'perfect — no corrections')
+    +(s.corrected&&s.corrected.length?(' · corrected after prior ✗ (green-circled): #'+s.corrected.join(', #')):'');
   $('#scoreLine').innerHTML=`<div class="stamp" style="width:56px;height:56px;font-size:20px">${s.score}</div>
     <div class="big"><strong>${s.setCode||s.fileName}</strong> · ${s.studentId||'unassigned'} · ${s.id}<br>${wrong} · graded ${(s.gradedAt||'').slice(0,10)}</div>`;
   const pv=$('#preview'); pv.innerHTML='';
