@@ -5,6 +5,19 @@ synthetic samples, PDF export, reports, and OCR of uploaded scans — runs in th
 user's browser. **No server-side compute, no installs for users, no data leaves
 their machine.**
 
+## What's new in this build (graded-overlay marking)
+Grading now composites correct/incorrect marks onto the sheet itself, and shows
+the correct answer for every wrong one:
+- Inline on the scan — a green ✓ on right answers and a red ✗ ellipse with
+  `→ <correct>` on wrong ones, anchored to each answer via Tesseract word boxes.
+- A corrections band below the scan — always present and authoritative, listing
+  every problem as `#n ✓ 85` or `#n ✗ 34 → 33`, plus the red score stamp and a
+  deterministic-engine evidence footer. This is what carries the correct answers
+  even when an OCR tier returns no coordinates (VLM / cloud paths).
+- Uploaded scans now export to PDF (single and bulk), each page sized to its own
+  aspect ratio so nothing is stretched. Scores still come only from the
+  deterministic engine; the model/OCR never sets a grade.
+
 ## Contents
     index.html            the entire application
     vendor/               in-browser OCR engine (Tesseract WASM, served same-origin)
