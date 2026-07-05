@@ -381,22 +381,18 @@ footer b{color:#CFE0EA}
       <span id="agentStatus" class="hint" style="margin:0">Idle.</span>
     </div>
 
-    <div class="olrow panel" style="padding:10px 12px;margin-bottom:12px">
-      <span class="dot" id="olDot"></span>
-      <strong style="font-size:12px">Local model (Ollama)</strong>
-      <input type="text" id="olUrl" value="http://localhost:11434" size="24" aria-label="Ollama endpoint">
-      <input type="text" id="olModel" value="qwen2.5vl:7b" size="14" aria-label="Ollama model">
-      <button class="btn" id="olTest">Test connection</button>
-      <label style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="olUse"> use for OCR of uploaded scans</label>
-      <span class="hint" style="margin:0">best quality for handwriting — optional</span>
+    <div class="olrow panel" style="padding:11px 13px;margin-bottom:12px">
+      <span class="dot" id="ocrDot"></span>
+      <strong style="font-size:12px">Handwriting reader</strong>
+      <span class="hint" style="margin:0" id="ocrHint">Uploaded scans are read automatically, entirely inside your browser — nothing leaves this device. The reader loads itself on first use (one-time download, then cached). Clear pen or print works best; faint or messy writing is set aside for review rather than guessed.</span>
     </div>
-
-    <div class="olrow panel" style="padding:10px 12px;margin-bottom:12px">
-      <span class="dot" id="bocrDot"></span>
-      <strong style="font-size:12px">In-browser OCR (zero install)</strong>
-      <label style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="bocrUse" checked> use for uploaded scans when no local model is available</label>
-      <span class="hint" style="margin:0" id="bocrHint">runs entirely in this browser (~8 MB engine loads on first use, then cached) · nothing leaves the machine · clear print/pen works best, faint pencil may route to review</span>
-    </div>
+    <!-- hidden defaults: users don't choose models; the engine selects and falls back on its own -->
+    <input type="hidden" id="vlmModel" value="HuggingFaceTB/SmolVLM-256M-Instruct">
+    <input type="hidden" id="vlmUse" data-on="1">
+    <input type="hidden" id="bocrUse" data-on="1">
+    <input type="hidden" id="cloudUrl" value="">
+    <input type="hidden" id="cloudModel" value="meta-llama/llama-4-maverick:free">
+    <input type="hidden" id="cloudUse">
 
     <div class="log" id="log" aria-live="polite"></div>
 
@@ -975,30 +971,75 @@ function setStage(id,cls){
 function resetStages(){ $$('#pathway .stage').forEach(s=>s.className='stage'); }
 
 let ollamaOk=false;
-async function testOllama(){
-  const url=$('#olUrl').value.replace(/\/$/,'');
-  try{
-    const res=await fetch(url+'/api/tags',{signal:AbortSignal.timeout(2500)});
-    ollamaOk=res.ok;
-  }catch(e){ ollamaOk=false; }
-  $('#olDot').className='dot '+(ollamaOk?'on':'off');
-  log('Ollama '+url+' → '+(ollamaOk?'reachable':'unreachable — deterministic fallback active'),ollamaOk?'ok':'wr');
-  return ollamaOk;
+
+
+/* ── in-browser AI model (WebGPU via vendored transformers.js) ── */
+let vlm=null, vlmFailed=false;
+function vlmProgress(p){
+  if(p&&p.status==='progress'&&p.file&&/onnx|safetensors|bin/.test(p.file)){
+    $('#ocrHint').textContent='downloading model: '+p.file.split('/').pop()+' · '+Math.round((p.loaded||0)/1048576)+' MB…';
+  }
+}
+async function getVlm(){
+  if(vlm) return vlm;
+  if(vlmFailed) throw new Error('previously failed this session');
+  const t=await import('./vendor/ai/transformers.web.min.js');
+  t.env.backends.onnx.wasm.wasmPaths='vendor/ai/';
+  const device=(navigator.gpu?'webgpu':'wasm');
+  const id=$('#vlmModel').value.trim();
+  $('#ocrHint').textContent='loading '+id+' on '+device+'…';
+  const processor=await t.AutoProcessor.from_pretrained(id,{progress_callback:vlmProgress});
+  const model=await t.AutoModelForVision2Seq.from_pretrained(id,{
+    dtype:{embed_tokens:'fp16',vision_encoder:'q8',decoder_model_merged:'q4'},
+    device,progress_callback:vlmProgress});
+  vlm={t,processor,model,device};
+  $('#ocrDot').className='dot on';
+  $('#ocrHint').textContent='model ready on '+device+' — cached for next time.';
+  log('In-browser model loaded: '+id+' on '+device,'ok');
+  return vlm;
+}
+const VLM_PROMPT='Read every arithmetic problem and its handwritten answer on this worksheet scan. Respond ONLY with JSON: {"problems":[{"n":1,"q":"37 + 48 =","written":"85"}]} using symbols + - x / in q.';
+async function vlmOcrSide(imageUrl){
+  const {t,processor,model}=await getVlm();
+  const image=await t.RawImage.fromURL(imageUrl);
+  const messages=[{role:'user',content:[{type:'image'},{type:'text',text:VLM_PROMPT}]}];
+  const text=processor.apply_chat_template(messages,{add_generation_prompt:true});
+  const inputs=await processor(text,[image]);
+  const gen=await model.generate({...inputs,max_new_tokens:512,do_sample:false});
+  let out=processor.batch_decode(gen,{skip_special_tokens:true})[0]||'';
+  out=out.split(/Assistant[:：]/i).pop();
+  let problems=[];
+  try{ const j=JSON.parse(out.slice(out.indexOf('{'),out.lastIndexOf('}')+1)); problems=(j.problems||[]); }
+  catch(e){ problems=parseOcrProblems(out); }
+  return problems.map((p,i)=>({n:p.n||i+1,q:String(p.q||''),written:p.written,ocr:String(p.written),conf:0.85,expected:evalExpr(String(p.q||'')),correct:null}))
+    .filter(p=>p.expected!==null&&p.written!=='?');
 }
 
-async function ollamaOcrSide(imageUrl){
-  // Vision OCR of a real scan. Only called when user opted in AND endpoint reachable.
-  const url=$('#olUrl').value.replace(/\/$/,''), model=$('#olModel').value.trim();
-  const b64=await fetch(imageUrl).then(r=>r.blob()).then(b=>new Promise((res,rej)=>{
-    const fr=new FileReader(); fr.onload=()=>res(fr.result.split(',')[1]); fr.onerror=rej; fr.readAsDataURL(b);}));
-  const body={model,stream:false,format:'json',
-    prompt:'You are the OCR stage of a worksheet grader. Read each numbered math problem and the handwritten answer. Respond ONLY with JSON: {"problems":[{"n":1,"q":"37 + 48 =","written":"85"}]}',
-    images:[b64]};
-  const res=await fetch(url+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});
-  if(!res.ok) throw new Error('model HTTP '+res.status);
-  const data=await res.json();
-  return JSON.parse(data.response);
+/* ── cloud OCR via the operator's key-holding proxy (worker.js) ── */
+function blobUrlToB64(url){return fetch(url).then(r=>r.blob()).then(b=>new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(b);}));}
+async function cloudOcrSide(imageUrl){
+  const ep=($('#cloudUrl').value||'').replace(/\/$/,'');
+  if(!ep) throw new Error('no endpoint configured');
+  const image_b64=await blobUrlToB64(imageUrl);
+  const r=await fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({image_b64,model:$('#cloudModel').value.trim()}),signal:AbortSignal.timeout(60000)});
+  if(!r.ok) throw new Error('proxy HTTP '+r.status);
+  const out=await r.json();
+  if(out.error) throw new Error(out.error);
+  return (out.problems||[]).map((p,i)=>({n:p.n||i+1,q:String(p.q||''),written:p.written,ocr:String(p.written),conf:0.92,expected:evalExpr(String(p.q||'')),correct:null}));
 }
+async function testCloud(){
+  const ep=($('#cloudUrl').value||'').replace(/\/$/,'');
+  if(!ep){ $('#ocrDot').className='dot off'; log('Cloud OCR: no endpoint set. Deploy worker.js to Cloudflare (steps inside the file) and paste its URL here.','wr'); return false; }
+  try{
+    const r=await fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ping:1}),signal:AbortSignal.timeout(6000)});
+    const ok=r.status<500; $('#ocrDot').className='dot '+(ok?'on':'off');
+    log('Cloud OCR proxy '+ep+' → '+(ok?'reachable (HTTP '+r.status+')':'unreachable'),ok?'ok':'er');
+    saveCloudPrefs(); return ok;
+  }catch(e){ $('#ocrDot').className='dot off'; log('Cloud OCR proxy unreachable: '+e.message,'er'); return false; }
+}
+function saveCloudPrefs(){ try{localStorage.setItem('gfcloud',JSON.stringify({url:$('#cloudUrl').value,model:$('#cloudModel').value,use:$('#cloudUse').checked}));}catch(e){} }
+function loadCloudPrefs(){ /* cloud proxy is operator-configured out of band; users never set it */ }
 
 /* ── in-browser OCR (vendored Tesseract WASM, same-origin, no CDN) ── */
 let bocrWorker=null, bocrLoadTried=false;
@@ -1010,7 +1051,7 @@ async function getBocrWorker(){
     bocrLoadTried=true;
     await loadScript('vendor/tesseract.min.js'); // same-origin; absent in single-file mode
   }
-  $('#bocrDot').className='dot on';
+  $('#ocrDot').className='dot on';
   bocrWorker=await Tesseract.createWorker('eng',1,{workerPath:'vendor/worker.min.js',corePath:'vendor/core/',langPath:'vendor',gzip:false});
   return bocrWorker;
 }
@@ -1040,15 +1081,36 @@ function evalExpr(q){
   return null;
 }
 
+async function bocrAttempt(sheet,who){
+  if(!($('#bocrUse')&&$('#bocrUse').checked)){ log(sheet.id+' → no further OCR tier enabled — routed to review','wr'); return false; }
+  try{
+    agentGuide(who+': reading the scan with the in-browser OCR engine (all local)…',true);
+    let total=0, confSum=0, nsides=0;
+    for(const sd of sheet.sides){
+      const out=await browserOcrSide(sd.imageUrl);
+      sd.problems=out.problems.map(p=>({...p,ocr:String(p.written),conf:+out.conf.toFixed(3),expected:evalExpr(p.q),correct:null}));
+      total+=out.problems.length; confSum+=out.conf; nsides++;
+    }
+    const meanConf=nsides?confSum/nsides:0;
+    if(!total){ log(sheet.id+' → in-browser OCR found no readable "a op b = c" lines — routed to review (faint pencil or skewed scan)','wr'); return false; }
+    if(meanConf<0.45){ log(sheet.id+' → in-browser OCR confidence too low ('+Math.round(meanConf*100)+'%) — routed to review rather than guessing','wr'); return false; }
+    log(sheet.id+' → in-browser OCR read '+total+' problem(s) · mean confidence '+Math.round(meanConf*100)+'%','ok');
+    return true;
+  }catch(e){
+    $('#ocrDot').className='dot off';
+    log(sheet.id+' → in-browser OCR unavailable ('+e.message+'). Single-file build has no vendor/ folder — use the deployed site package. Routed to review.','wr');
+    return false;
+  }
+}
 async function runAgent(){
   const queued=state.sheets.filter(s=>s.status==='queued'&&!s.archived);
   if(!queued.length){ log('Nothing queued. Load the synthetic batch or upload scans in tab 1.','wr'); return; }
   $('#btnRun').disabled=true;
   $('#runDone').innerHTML='';
   const runIds=queued.map(s=>s.id);
-  const useModel=$('#olUse').checked && (ollamaOk || await testOllama());
+  const useModel=false; // Ollama removed; in-browser reader is the default
   $('#jsonOut').innerHTML='';
-  log('── Agent run start · '+queued.length+' sheet(s) · OCR='+(useModel?'local model ('+$('#olModel').value+')':'deterministic/synthetic')+' ──');
+  log('── Agent run start · '+queued.length+' sheet(s) · OCR='+($('#vlmUse').checked?'in-browser reader / synthetic':'deterministic/synthetic')+' ──');
 
   let si=0;
   for(const sheet of queued){
@@ -1064,7 +1126,7 @@ async function runAgent(){
     log(sheet.id+' → side B'); await wait(240); setStage('scanB','ok');
 
     setStage('ocr','run');
-    agentGuide(who+(sheet.source==='synthetic'?': reading 20 handwritten answers…':(useModel?': sending both scans to the local model for OCR…':': no local model enabled — routing this scan to the review queue…')),true);
+    agentGuide(who+(sheet.source==='synthetic'?': reading 20 handwritten answers…':': reading the scan with the in-browser handwriting reader…'),true);
     let ok=true;
     if(sheet.source==='synthetic'){
       const r=mulberry32(sheet.seed+777);
@@ -1073,32 +1135,35 @@ async function runAgent(){
         p.conf=+(0.86+r()*0.135).toFixed(3);
       }));
       log(sheet.id+' → OCR complete · 20 fields · mean conf '+(sheet.sides.flatMap(s=>s.problems).reduce((a,p)=>a+p.conf,0)/20).toFixed(3),'ok');
-    }else if(useModel){
+    }else if($('#vlmUse')&&$('#vlmUse').checked&&location.protocol!=='file:'){
       try{
+        agentGuide(who+': running the in-browser AI model on the scan (all local)…',true);
+        let total=0;
         for(const sd of sheet.sides){
-          const out=await ollamaOcrSide(sd.imageUrl);
-          sd.problems=(out.problems||[]).map((p,i)=>({n:p.n||i+1,q:p.q||'',written:p.written,ocr:String(p.written),conf:0.9,expected:evalExpr(p.q||''),correct:null}));
+          sd.problems=await vlmOcrSide(sd.imageUrl);
+          total+=sd.problems.length;
         }
-        log(sheet.id+' → model OCR returned '+sheet.sides.reduce((a,s)=>a+(s.problems?s.problems.length:0),0)+' fields','ok');
-      }catch(e){ ok=false; log(sheet.id+' → model OCR failed ('+e.message+') — routed to review queue','er'); }
-    }else if($('#bocrUse')&&$('#bocrUse').checked){
-      try{
-        agentGuide(who+': reading the scan with the in-browser OCR engine (all local)…',true);
-        let total=0, confSum=0, nsides=0;
-        for(const sd of sheet.sides){
-          const out=await browserOcrSide(sd.imageUrl);
-          sd.problems=out.problems.map(p=>({...p,ocr:String(p.written),conf:+out.conf.toFixed(3),expected:evalExpr(p.q),correct:null}));
-          total+=out.problems.length; confSum+=out.conf; nsides++;
-        }
-        const meanConf=nsides?confSum/nsides:0;
-        if(!total){ ok=false; log(sheet.id+' → in-browser OCR found no readable "a op b = c" lines — routed to review (faint pencil or skewed scan)','wr'); }
-        else if(meanConf<0.45){ ok=false; log(sheet.id+' → in-browser OCR confidence too low ('+Math.round(meanConf*100)+'%) — routed to review rather than guessing','wr'); }
-        else log(sheet.id+' → in-browser OCR read '+total+' problem(s) · mean confidence '+Math.round(meanConf*100)+'%','ok');
+        if(!total) throw new Error('model read no gradable problems');
+        log(sheet.id+' → in-browser model read '+total+' problem(s)','ok');
       }catch(e){
-        ok=false;
-        $('#bocrDot').className='dot off';
-        log(sheet.id+' → in-browser OCR unavailable ('+e.message+'). Single-file build has no vendor/ folder — use the deployed site package, or enable a local model. Routed to review.','wr');
+        vlmFailed=true; $('#ocrDot').className='dot off';
+        $('#ocrHint').textContent='unavailable this session ('+e.message+') — cascading to the OCR engine below.';
+        log(sheet.id+' → in-browser model failed ('+e.message+') — cascading to next OCR tier','wr');
+        ok=await bocrAttempt(sheet,who);
       }
+    }else if($('#cloudUse')&&$('#cloudUse').checked&&$('#cloudUrl').value.trim()){
+      try{
+        agentGuide(who+': sending scan to your cloud OCR proxy (OpenRouter)…',true);
+        let total=0;
+        for(const sd of sheet.sides){
+          sd.problems=await cloudOcrSide(sd.imageUrl);
+          total+=sd.problems.length;
+        }
+        if(!total){ ok=false; log(sheet.id+' → cloud OCR returned no problems — routed to review','wr'); }
+        else log(sheet.id+' → cloud OCR read '+total+' problem(s) via '+$('#cloudModel').value,'ok');
+      }catch(e){ ok=false; $('#ocrDot').className='dot off'; log(sheet.id+' → cloud OCR failed ('+e.message+') — routed to review. Check the proxy URL, its allowed-origins list, and your OpenRouter credit.','er'); }
+    }else if($('#bocrUse')&&$('#bocrUse').checked){
+      ok=await bocrAttempt(sheet,who);
     }else{
       ok=false;
       log(sheet.id+' → uploaded scan, no OCR tier enabled — routed to instructor review queue (deterministic engine never guesses handwriting)','wr');
@@ -1523,7 +1588,6 @@ $('#btnEmailAll').onclick=()=>{
 };
 $('#btnRun').onclick=runAgent;
 $('#btnJam').onclick=simulateJam;
-$('#olTest').onclick=testOllama;
 $('#btnPrint').onclick=doPrint;
 $('#btnSave').onclick=doSave;
 $('#btnCsv').onclick=exportCsv;
@@ -1541,6 +1605,10 @@ function applyTheme(t){
 $('#themeBtn').onclick=()=>applyTheme(document.body.classList.contains('dark')?'light':'dark');
 
 (function boot(){
+  loadCloudPrefs();
+  // hidden OCR defaults: reflect data-on into .checked
+  ['vlmUse','bocrUse'].forEach(id=>{const el=$('#'+id); if(el) el.checked=el.dataset.on==='1';});
+  $('#cloudUse').checked=false;
   let th='light'; try{th=localStorage.getItem('gftheme')||'light';}catch(e){}
   applyTheme(th);
   const restored=loadState();

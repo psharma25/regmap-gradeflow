@@ -30,12 +30,20 @@ URL: https://<user>.github.io/gradeflow/  — send that link; recipients need no
 Front with CloudFront (HTTPS, caching; set default root object index.html).
 No EC2 required — this package has no server component.
 
-## OCR tiers (automatic)
-1. Local Ollama vision model — optional, best handwriting quality (each user's own machine).
-2. In-browser engine (this vendor/ folder) — default, zero install, fully local.
-   Clear pen/print reads well; faint pencil or skewed scans route to review
-   rather than being guessed. Scores always come from the deterministic engine.
-3. Review queue — the honest fallback.
+## OCR tiers (automatic, in this order)
+1. Local Ollama vision model — optional, best handwriting quality (user's own machine).
+2. In-browser AI model (WebGPU, experimental) — DEFAULT. Runs SmolVLM inside the
+   user's browser tab via vendor/ai/ (transformers.js + ONNX Runtime, served
+   same-origin). Model weights stream from huggingface.co on first use
+   (~300 MB, cached by the browser afterwards). Needs Chrome/Edge with WebGPU;
+   otherwise falls back to slow CPU or cascades to tier 3. Worksheets never
+   leave the machine.
+3. In-browser OCR engine (vendor/, Tesseract WASM) — zero download beyond ~8 MB,
+   fully local; clear pen/print reads well, faint pencil routes to review.
+4. Cloud OCR via your key-holding proxy (worker.js, Cloudflare) — OFF by default;
+   sends images to OpenRouter, so enable knowingly.
+5. Review queue — the honest fallback. Scores ALWAYS come from the deterministic
+   engine regardless of tier.
 
 ## Do not deploy on GitHub Codespaces
 Codespaces are authenticated dev environments that idle-stop; they are not a
