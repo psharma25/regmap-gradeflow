@@ -656,8 +656,6 @@ function renderSide(sheet,si,overlay){
       }else{
         x.strokeStyle='#C9403A'; x.fillStyle='#C9403A';
         x.beginPath(); x.ellipse(ax+70,cy-16,95,44,(r()-.5)*.1,0,7); x.stroke();
-        x.font='700 34px system-ui,sans-serif';
-        x.fillText('→ '+p.expected, ax+8, cy+52);
       }
     }
   });
@@ -722,8 +720,6 @@ function drawScanOverlay(img,natW,natH,sheet,si){
     }else{
       x.strokeStyle='#C9403A';
       x.beginPath(); x.ellipse(bx+bw/2,by+bh/2,bw*0.72+6,bh*0.7+4,0,0,7); x.stroke();
-      x.fillStyle='#C9403A'; x.font='700 '+Math.max(14,Math.round(bh*0.85))+'px system-ui,sans-serif';
-      x.fillText('\u2192 '+p.expected, cx, by+bh);
     }
   });
 
@@ -738,7 +734,7 @@ function drawScanOverlay(img,natW,natH,sheet,si){
   problems.forEach((p,i)=>{
     const cxp=col[i%2], cyp=by0+rowH*2.15+Math.floor(i/2)*rowH;
     if(p.correct){ x.fillStyle='#1E9E5A'; x.fillText('#'+p.n+'   \u2713   '+p.ocr, cxp, cyp); }
-    else{ x.fillStyle='#C9403A'; x.fillText('#'+p.n+'   \u2717   '+(p.ocr==null?'?':p.ocr)+'   \u2192   '+p.expected, cxp, cyp); }
+    else{ x.fillStyle='#C9403A'; x.fillText('#'+p.n+'   \u2717   '+(p.ocr==null?'?':p.ocr), cxp, cyp); }
   });
   x.fillStyle='#8A97A2'; x.font=Math.round(rowH*0.58)+'px ui-monospace,monospace';
   x.fillText('GF-ALPHA · engine deterministic-v0.3 · graded '+(sheet.gradedAt||'').slice(0,10)+' · side '+(si?'B':'A'), Math.round(iw*0.035), by0+bandH-Math.round(rowH*0.55));
