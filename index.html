@@ -670,8 +670,8 @@ function renderSide(sheet,si,overlay){
       // faded red ✗ from the previous grading pass, in the margin zone
       x.globalAlpha=0.5; x.strokeStyle='#C9403A'; x.lineWidth=6; x.lineCap='round';
       x.beginPath();
-      x.moveTo(ax+168,cy-46); x.lineTo(ax+222,cy+12);
-      x.moveTo(ax+222,cy-46); x.lineTo(ax+168,cy+12);
+      x.moveTo(ax+158,cy-46); x.lineTo(ax+212,cy+12);
+      x.moveTo(ax+212,cy-46); x.lineTo(ax+158,cy+12);
       x.stroke();
       x.restore();
     }
@@ -690,15 +690,15 @@ function renderSide(sheet,si,overlay){
           x.restore();
         }else{
           x.strokeStyle='#1E9E5A';
-          x.beginPath(); x.moveTo(ax+165,cy-8); x.lineTo(ax+185,cy+14); x.lineTo(ax+225,cy-44); x.stroke();
+          x.beginPath(); x.moveTo(ax+155,cy-8); x.lineTo(ax+175,cy+14); x.lineTo(ax+215,cy-44); x.stroke();
         }
       }else{
         x.strokeStyle='#C9403A'; x.fillStyle='#C9403A';
         const jx=(r()-.5)*6, jy=(r()-.5)*6; // slight hand-drawn jitter
-        // X sits to the right of the answer line (same zone as the check), never over the answer
+        // X sits just right of the answer line (same zone as the check), never over the answer
         x.beginPath();
-        x.moveTo(ax+168+jx,cy-46+jy); x.lineTo(ax+222,cy+12);
-        x.moveTo(ax+222+jx,cy-46+jy); x.lineTo(ax+168,cy+12);
+        x.moveTo(ax+158+jx,cy-46+jy); x.lineTo(ax+212,cy+12);
+        x.moveTo(ax+212+jx,cy-46+jy); x.lineTo(ax+158,cy+12);
         x.stroke();
       }
     }
