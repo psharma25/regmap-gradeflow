@@ -13,7 +13,9 @@
        answer (positioned from the measured answer width), and lay out the
        generated problems so prompt / answer / marks never overlap.
     5. Worksheet types are selectable (Intake ▸ Test sheet type), including a
-       Science set. Grades are always recomputed by the deterministic engine
+       Science set and multi-line Calculus sets (derivatives and integrals,
+       graded by polynomial equivalence). The same marking format above applies
+       to every type. Grades are always recomputed by the deterministic engine
        from the answer key — never from OCR or a model.
   ============================================================================
 -->
@@ -344,6 +346,8 @@ footer b{color:#CFE0EA}
           <option value="EQN">Linear equations (solve for x) — Level H</option>
           <option value="ENG">English (grammar / vocab) — Reading</option>
           <option value="SCI">Science (fill in the blank) — Elementary</option>
+          <option value="DRV">Derivatives — d/dx of a polynomial — Calculus</option>
+          <option value="INT">Integrals — ∫ p(x) dx (+ C) — Calculus</option>
         </select>
       </label>
       <label style="font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--muted);text-align:left">WRONG-ANSWER RATE<br>
@@ -604,6 +608,47 @@ function parseFrac(s){                                       // "a/b" | "w a/b" 
   return null;
 }
 const fracEq=(a,b)=>a&&b&&a.n*b.d===b.n*a.d;
+/* ── polynomial helpers (derivative / integral grading) ──
+   A polynomial is a map {exponent: coefficient}. polyStr renders with unicode
+   superscripts; parsePoly tolerates x^2 / x² / spaces / unicode minus and
+   strips a trailing "+ C"; polyEq compares maps exactly. */
+const SUP={0:'',1:'',2:'²',3:'³',4:'⁴',5:'⁵',6:'⁶'};
+function termStr(c,e){const a=Math.abs(c);
+  if(e===0)return String(a);
+  const base=(a===1?'':a)+'x'+(e===1?'':(SUP[e]||('^'+e)));return base;}
+function polyStr(map){
+  const es=Object.keys(map).map(Number).filter(e=>map[e]!==0).sort((x,y)=>y-x);
+  if(!es.length)return '0';
+  let s='';
+  es.forEach((e,i)=>{const c=map[e];
+    if(i===0)s+=(c<0?'−':'')+termStr(c,e);
+    else s+=(c<0?' − ':' + ')+termStr(c,e);});
+  return s;
+}
+function parsePoly(str){
+  if(str==null)return null;
+  let s=String(str).toLowerCase().replace(/²/g,'^2').replace(/³/g,'^3').replace(/⁴/g,'^4').replace(/⁵/g,'^5').replace(/⁶/g,'^6')
+        .replace(/−/g,'-').replace(/[·*\s]/g,'');
+  s=s.replace(/\+c$/,'').replace(/-c$/,'').replace(/^c$/,'');
+  if(s==='')return {};
+  s=s.replace(/-/g,'+-');
+  const map={}; let any=false;
+  for(const t of s.split('+')){
+    if(t==='')continue;
+    let coef,exp; const xi=t.indexOf('x');
+    if(xi>=0){let cs=t.slice(0,xi);
+      coef=(cs===''||cs==='+')?1:(cs==='-'?-1:parseInt(cs,10));
+      const rest=t.slice(xi+1); exp=rest.startsWith('^')?parseInt(rest.slice(1),10):1;
+    }else{coef=parseInt(t,10);exp=0;}
+    if(isNaN(coef)||isNaN(exp))return null;
+    map[exp]=(map[exp]||0)+coef; any=true;
+  }
+  if(!any)return null;
+  Object.keys(map).forEach(k=>{if(map[k]===0)delete map[k];});
+  return map;
+}
+function polyEq(a,b){if(!a||!b)return false;const ka=Object.keys(a),kb=Object.keys(b);
+  if(ka.length!==kb.length)return false;return ka.every(k=>a[k]===b[k]);}
 function hstr(s){let h=1779033703^s.length;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19;}return h>>>0;}
 function wrongify(correct,r){                                // numeric fallback distractor
   const modes=[c=>c+1,c=>c-1,c=>c+10,c=>c-10,c=>{const s=String(c);return s.length>1?+((s[1]+s[0])+s.slice(2)):c+2;}];
@@ -703,7 +748,43 @@ const LEVELS={
       const out=[];for(let i=0;i<count;i++){const it=ENG_BANK[idx[i%idx.length]];out.push({q:it.s,ans:it.a,cmp:'text',cat:it.cat,dis:it.dis});}return out;}},
   SCI:{name:'Science',level:'Elementary',blurb:'life, earth & physical science — fill in the blank',cmp:'text',cols:1,perSide:6,slot:true,
     generate(r,count){const idx=SCI_BANK.map((_,i)=>i);for(let i=idx.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
-      const out=[];for(let i=0;i<count;i++){const it=SCI_BANK[idx[i%idx.length]];out.push({q:it.s,ans:it.a,cmp:'text',cat:it.cat,dis:it.dis});}return out;}}
+      const out=[];for(let i=0;i<count;i++){const it=SCI_BANK[idx[i%idx.length]];out.push({q:it.s,ans:it.a,cmp:'text',cat:it.cat,dis:it.dis});}return out;}},
+
+  /* ── calculus (multi-line: expression on top, worked answer on the line below) ── */
+  DRV:{name:'Derivatives',level:'Calculus',blurb:'differentiate d/dx of a polynomial',cmp:'poly',cols:1,perSide:5,calc:true,
+    make(r){
+      const pool=[4,3,2,1]; const p2=pool.slice(); const chosen=[]; const nT=ri(r,2,3);
+      for(let i=0;i<nT;i++)chosen.push(p2.splice(ri(r,0,p2.length-1),1)[0]);
+      chosen.sort((a,b)=>b-a);
+      const F={}, d={};
+      chosen.forEach(e=>{F[e]=pick(r,[-9,-8,-7,-6,-5,-4,-3,-2,2,3,4,5,6,7,8,9]);});
+      if(r()<0.5)F[0]=pick(r,[-9,-7,-5,-3,3,5,7,9]);              // constant vanishes on d/dx
+      Object.keys(F).forEach(k=>{const e=+k;if(e>0)d[e-1]=F[e]*e;});
+      const ans=polyStr(d);
+      return{q:'d/dx ( '+polyStr(F)+' )  =',ans,cmp:'poly',
+        bad:(rr)=>{const keys=Object.keys(d).map(Number); const w={...d}; const mode=ri(rr,0,2);
+          if(mode===0){const e=pick(rr,keys); w[e]=F[e+1]; if(w[e]===d[e])w[e]=d[e]+pick(rr,[-1,1,2]);}     // forgot ×exponent
+          else if(mode===1){const e=pick(rr,keys); delete w[e]; if(!Object.keys(w).length)w[keys[0]]=d[keys[0]]+1;} // dropped a term
+          else{const e=pick(rr,keys); w[e]=-w[e]; if(w[e]===d[e])w[e]=d[e]+2;}                                // sign slip
+          let s=polyStr(w); if(polyEq(parsePoly(s),parsePoly(ans)))s=polyStr({...w,[keys[0]]:(d[keys[0]]||0)+3});
+          return s;}};
+    }},
+  INT:{name:'Integrals',level:'Calculus',blurb:'integrate ∫ p(x) dx  (indefinite, + C)',cmp:'poly',cols:1,perSide:5,calc:true,
+    make(r){
+      const pool=[3,2,1,0]; const p2=pool.slice(); const chosen=[]; const nT=ri(r,2,3);
+      for(let i=0;i<nT;i++)chosen.push(p2.splice(ri(r,0,p2.length-1),1)[0]);
+      chosen.sort((a,b)=>b-a);
+      const f={}, F={};
+      chosen.forEach(e=>{const k=pick(r,[-4,-3,-2,-1,1,2,3,4]); f[e]=k*(e+1); F[e+1]=k;}); // integer antiderivative
+      const ans=polyStr(F)+' + C';
+      return{q:'∫ ( '+polyStr(f)+' ) dx  =',ans,cmp:'poly',
+        bad:(rr)=>{const keys=Object.keys(F).map(Number); const w={...F}; const mode=ri(rr,0,2);
+          if(mode===0){const e=pick(rr,keys); w[e]=f[e-1]; if(w[e]===F[e])w[e]=F[e]+pick(rr,[-1,1,2]);}       // forgot ÷(new exp)
+          else if(mode===1){const e=pick(rr,keys); const c=w[e]; delete w[e]; w[e-1]=(w[e-1]||0)+c; if((w[e-1])===0)w[e-1]=c+1;} // forgot to raise exponent
+          else{const e=pick(rr,keys); w[e]=w[e]+pick(rr,[-2,-1,1,2,3]); if(w[e]===F[e])w[e]=F[e]+3;}          // wrong coefficient
+          let s=polyStr(w)+' + C'; if(polyEq(parsePoly(s),parsePoly(ans)))s=polyStr({...w,[keys[0]]:(F[keys[0]]||0)+3})+' + C';
+          return s;}};
+    }}
 };
 
 function buildSyntheticSheet(studentId,level,setCode,seed,examDate,resub,skillOverride){
@@ -821,9 +902,10 @@ function renderSide(sheet,si,overlay){
   //    Every mark is positioned from the *measured* answer width. ──
   const T=LEVELS[sheet.level]||LEVELS.B;
   const slotLayout=!!T.slot;                    // sentence + "answer:" slot
+  const calcLayout=!!T.calc;                     // multi-line: expression then worked answer
   const LXm=85, RXm=1040;                        // usable page margins
   const probs=sheet.sides[si].problems;
-  const cols=slotLayout?1:(T.cols||2);
+  const cols=(slotLayout||calcLayout)?1:(T.cols||2);
   const rows=Math.ceil(probs.length/cols);
   const colGap=40;
   const colW=(RXm-LXm-(cols-1)*colGap)/cols;
@@ -836,6 +918,12 @@ function renderSide(sheet,si,overlay){
     let fs=slotLayout?30:44; x.font=fs+'px Georgia,serif';
     while(fs>24 && x.measureText(str).width>budget){fs-=2; x.font=fs+'px Georgia,serif';}
     return fs;
+  }
+  function wrapText(str,maxW){                     // greedy word-wrap at the current font
+    const words=String(str).split(' '); const lines=[]; let line='';
+    for(const wd of words){ const t=line?line+' '+wd:wd;
+      if(x.measureText(t).width>maxW && line){lines.push(line); line=wd;} else line=t; }
+    if(line)lines.push(line); return lines.slice(0,3);
   }
   // consistent mark X: just right of the real answer, clamped inside the column
   function markXfor(axStart,aw,cx){
@@ -870,6 +958,33 @@ function renderSide(sheet,si,overlay){
     const col=Math.floor(i/rows), row=i%rows;
     const cx=LXm+col*(colW+colGap);
     const cyTop=startY+row*rowH;
+
+    if(calcLayout){
+      // MULTI-LINE: the expression (wrapped if long) on top, the worked answer
+      // on its own line below — marks and struck prior answer stay clear of both.
+      const label=(p.n)+')  ';
+      let fs=40; x.font=fs+'px Georgia,serif';
+      while(fs>28 && x.measureText(label+p.q).width>colW-20){fs-=2; x.font=fs+'px Georgia,serif';}
+      const lines=wrapText(label+p.q, colW-20);
+      x.fillStyle='#1D2A35';
+      let ly=cyTop+46; lines.forEach(ln=>{ x.fillText(ln, cx, ly); ly+=fs+8; });
+      const ansY=ly+40;                         // gap keeps the struck prior answer off the prompt
+      x.fillStyle='#1D2A35'; x.font='40px Georgia,serif'; x.fillText('=', cx+30, ansY);
+      const axStart=cx+92;
+      x.strokeStyle='#C6CDD4'; x.lineWidth=2; x.beginPath(); x.moveTo(axStart,ansY+10); x.lineTo(axStart+520,ansY+10); x.stroke();
+      const aStr=String(p.written), aFs=aStr.length>12?34:(aStr.length>7?40:48);
+      x.save(); x.translate(axStart+12,ansY); x.rotate((r()-.5)*.04);
+      x.font=aFs+'px "Comic Sans MS",cursive'; x.fillStyle='#39415C'; x.fillText(aStr,0,0); x.restore();
+      x.font=aFs+'px "Comic Sans MS",cursive'; const aw=x.measureText(aStr).width;
+      if(isResub && p.wasWrong && p.prevWritten!=null){
+        x.save(); x.globalAlpha=0.5; x.font='26px "Comic Sans MS",cursive'; x.fillStyle='#6B7280';
+        x.translate(axStart+12,ansY-52); x.rotate((r()-.5)*.05); x.fillText(String(p.prevWritten),0,0);
+        const pw=x.measureText(String(p.prevWritten)).width;
+        x.strokeStyle='#6B7280'; x.lineWidth=3; x.beginPath(); x.moveTo(-4,-9); x.lineTo(pw+4,-13); x.stroke(); x.restore();
+      }
+      placeMarks(p, axStart+12, ansY, aw, cx);
+      return;
+    }
 
     if(slotLayout){
       // fill-in-the-blank: prompt on line 1, answer slot on line 2
@@ -1463,6 +1578,7 @@ function gradeCmp(p){
     return nz(got)===nz(exp);
   }
   if(cmp==='frac'){return fracEq(parseFrac(got),parseFrac(exp));}
+  if(cmp==='poly'){return polyEq(parsePoly(got),parsePoly(exp));}  // derivatives / integrals (+C ignored)
   if(cmp==='text'){
     const nt=s=>String(s).toLowerCase().replace(/[.\s]+$/,'').replace(/\s+/g,' ').trim();
     return nt(got)===nt(exp);

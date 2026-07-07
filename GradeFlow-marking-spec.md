@@ -26,17 +26,22 @@ _Saved 2026-07-06 from the user's request._
    auto-fit their column, so generated problem text never overlaps.
 5. **Selectable worksheet types** (Intake ▸ *Test sheet type*): Addition, Multiplication
    (2-digit), Division with remainder, Fractions, Order of operations, Linear equations,
-   English, and **Science** (fill-in-the-blank across life / earth / physical science),
-   plus the original Mixed B/C/D sample. A wrong-answer-rate selector and a *pre-graded*
-   toggle control each batch.
+   English, **Science** (fill-in-the-blank across life / earth / physical science), and
+   **multi-line Calculus** — **Derivatives** (`d/dx` of a polynomial) and **Integrals**
+   (`∫ p(x) dx`, indefinite, `+ C`) — plus the original Mixed B/C/D sample. Calculus
+   problems render the expression on one line and the worked answer on the line below,
+   and are graded by polynomial equivalence (the `+ C` on integrals is ignored). A
+   wrong-answer-rate selector and a *pre-graded* toggle control each batch. The same
+   marking format (1–4 above) applies to every type, including calculus.
 6. **Deterministic grading:** every grade is recomputed by the engine from the answer key
    (integer / division-with-remainder / fraction-equivalence / text comparators). OCR or
    a connected model never sets a grade — the same seed reproduces the same sheet and score.
 
 ## Validation performed before delivery (jsdom + canvas mock)
 
-- Grading is correct for all 10 types: perfect papers grade 100%; all-wrong papers grade 0%
-  (no distractor ever collides with the key).
+- Grading is correct for all types: perfect papers grade 100%; all-wrong papers grade 0%
+  (no distractor ever collides with the key). Calculus answer keys were additionally
+  verified by numeric differentiation (derivative keys and integral antiderivatives).
 - Normal sheets show ✓/✗ only — no answer key text anywhere on the page.
 - Pre-graded sheets: a green ✓ for every first-right problem, a red ✗ for every first-wrong
   problem, and a green ◯ around every corrected answer.
