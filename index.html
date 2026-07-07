@@ -1,4 +1,22 @@
 <!DOCTYPE html>
+<!--
+  ============================================================================
+  GradeFlow AI — GRADING-MARK SPECIFICATION (saved from user request 2026-07-06)
+  ----------------------------------------------------------------------------
+  Marking must be CONSISTENT across every generated / graded sheet:
+    1. Right answer  → a GREEN CHECK (✓).
+    2. Wrong answer  → a RED CROSS (✗).  Do NOT print the correct answer.
+    3. Pre-graded (resubmission) sheet → KEEP the previous pass's marks
+       (green ✓ where first attempt was right, red ✗ where it was wrong) and
+       ADD a GREEN CIRCLE (◯) around each corrected answer.
+    4. Place all marks so they do NOT cover problem text or the student's
+       answer (positioned from the measured answer width), and lay out the
+       generated problems so prompt / answer / marks never overlap.
+    5. Worksheet types are selectable (Intake ▸ Test sheet type), including a
+       Science set. Grades are always recomputed by the deterministic engine
+       from the answer key — never from OCR or a model.
+  ============================================================================
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -314,11 +332,37 @@ footer b{color:#CFE0EA}
   <div class="drop" id="drop">
     <div class="big">Drop scans here or choose files</div>
     <div>Single PDF · ZIP archive · multiple PDFs / PNG / JPG</div>
+    <div class="tkpick" style="margin-top:14px;display:flex;gap:10px 14px;justify-content:center;align-items:end;flex-wrap:wrap">
+      <label style="font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--muted);text-align:left">TEST SHEET TYPE<br>
+        <select id="tType" style="margin-top:4px;min-width:230px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--txt);font-size:13px">
+          <option value="MIX">Mixed sample (B / C / D)</option>
+          <option value="B">Addition — Level B</option>
+          <option value="MUL2">Multiplication (2-digit) — Level C</option>
+          <option value="DVR">Division with remainder — Level D</option>
+          <option value="FRC">Fractions (add &amp; reduce) — Level E–F</option>
+          <option value="OOO">Order of operations — Level F</option>
+          <option value="EQN">Linear equations (solve for x) — Level H</option>
+          <option value="ENG">English (grammar / vocab) — Reading</option>
+          <option value="SCI">Science (fill in the blank) — Elementary</option>
+        </select>
+      </label>
+      <label style="font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--muted);text-align:left">WRONG-ANSWER RATE<br>
+        <select id="tErr" style="margin-top:4px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--txt);font-size:13px">
+          <option value="0.85">~15% wrong</option>
+          <option value="0.75" selected>~25% wrong</option>
+          <option value="0.60">~40% wrong</option>
+          <option value="1">perfect papers</option>
+        </select>
+      </label>
+      <label style="font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px;padding-bottom:8px">
+        <input type="checkbox" id="tPre"> pre-graded (already ✗-marked)
+      </label>
+    </div>
     <div style="margin-top:12px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="btn pri" id="btnPick">Choose files</button>
-      <button class="btn" id="btnSynth">Load synthetic sample batch</button>
+      <button class="btn" id="btnSynth">Generate sample sheets</button>
     </div>
-    <div class="fmt">accepts .pdf · .zip · .png · .jpg — scanner-class image PDFs supported (embedded JPEG extraction)</div>
+    <div class="fmt">Pick a test-sheet type above, then <strong>Generate sample sheets</strong> — or drop real scans. accepts .pdf · .zip · .png · .jpg (embedded JPEG extraction)</div>
     <input type="file" id="filePick" accept=".pdf,.zip,image/png,image/jpeg" multiple hidden>
   </div>
 
@@ -523,7 +567,7 @@ const state={
 function saveState(){
   try{
     const slim=state.sheets.filter(s=>s.source==='synthetic').map(s=>({
-      id:s.id,studentId:s.studentId,setCode:s.setCode,level:s.level,seed:s.seed,archived:!!s.archived,resub:!!s.resub,
+      id:s.id,studentId:s.studentId,setCode:s.setCode,level:s.level,seed:s.seed,archived:!!s.archived,resub:!!s.resub,skill:s.skillUsed,
       examDate:s.examDate,status:s.status,score:s.score,wrong:s.wrong,corrected:s.corrected,gradedAt:s.gradedAt
     }));
     localStorage.setItem('gfalpha',JSON.stringify({slim,rel:state.rel,jobLog:state.jobLog.slice(-40),nextId:state.nextId,
@@ -538,7 +582,7 @@ function loadState(){
     if(d.view) state.view=d.view;
     if(d.printer&&$('#oPrinter'))$('#oPrinter').value=d.printer;
     (d.slim||[]).forEach(m=>{
-      const sh=buildSyntheticSheet(m.studentId,m.level,m.setCode,m.seed,m.examDate,m.resub);
+      const sh=buildSyntheticSheet(m.studentId,m.level,m.setCode,m.seed,m.examDate,m.resub,m.skill);
       Object.assign(sh,{id:m.id,status:m.status,score:m.score,wrong:m.wrong,corrected:m.corrected,gradedAt:m.gradedAt,archived:!!m.archived});
       state.sheets.push(sh);
     });
@@ -547,68 +591,196 @@ function loadState(){
 }
 
 /* ══════════════ synthetic worksheet generation ══════════════ */
-const LEVELS={
-  B:{name:'Addition',make(r){const a=10+Math.floor(r()*80),b=10+Math.floor(r()*80);return{q:a+' + '+b+' =',ans:a+b};}},
-  C:{name:'Multiplication',make(r){const a=12+Math.floor(r()*80),b=2+Math.floor(r()*8);return{q:a+' × '+b+' =',ans:a*b};}},
-  D:{name:'Division',make(r){const b=2+Math.floor(r()*8),q=11+Math.floor(r()*80);return{q:(b*q)+' ÷ '+b+' =',ans:q};}}
-};
-
-function wrongify(correct,r){
+/* ── seeded helpers (deterministic — reproducibility is a QMS requirement) ── */
+const ri=(r,lo,hi)=>lo+Math.floor(r()*(hi-lo+1));           // inclusive int
+const pick=(r,arr)=>arr[Math.floor(r()*arr.length)];
+const gcd=(a,b)=>{a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b];}return a||1;};
+function reduce(n,d){const g=gcd(n,d);return [n/g,d/g];}
+function parseFrac(s){                                       // "a/b" | "w a/b" | "n" → {n,d}
+  if(s==null)return null; s=String(s).trim().replace(/\s+/g,' ');
+  let m=s.match(/^(-?\d+)\s+(\d+)\/(\d+)$/); if(m){const w=+m[1],n=+m[2],d=+m[3];if(!d)return null;const sg=w<0?-1:1;return{n:sg*(Math.abs(w)*d+n),d};}
+  m=s.match(/^(-?\d+)\/(-?\d+)$/); if(m){const d=+m[2];if(!d)return null;return{n:+m[1],d};}
+  m=s.match(/^-?\d+$/); if(m)return{n:+s,d:1};
+  return null;
+}
+const fracEq=(a,b)=>a&&b&&a.n*b.d===b.n*a.d;
+function hstr(s){let h=1779033703^s.length;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19;}return h>>>0;}
+function wrongify(correct,r){                                // numeric fallback distractor
   const modes=[c=>c+1,c=>c-1,c=>c+10,c=>c-10,c=>{const s=String(c);return s.length>1?+((s[1]+s[0])+s.slice(2)):c+2;}];
   let w=correct;
   while(w===correct){w=modes[Math.floor(r()*modes.length)](correct);}
   return w;
 }
 
-function buildSyntheticSheet(studentId,level,setCode,seed,examDate,resub){
+/* ══════════════ worksheet TYPE registry ══════════════
+   Each type: name/level/blurb (header), cmp (grader), cols + perSide (layout),
+   and either make(r) → {q,ans,bad(r)?,dis?} or generate(r,count) → problems[].
+   `bad(r)` / `dis[]` produce a deterministic, plausibly-WRONG answer of the
+   same shape. Grades are always recomputed by gradeCmp from the answer key —
+   never trusted from the injected flag, never from OCR/model. */
+const ENG_BANK=[
+  {s:"The children ___ happily in the park yesterday.",a:"played",cat:"past tense",dis:["play","plays","playing"]},
+  {s:"She ___ to school every morning.",a:"walks",cat:"subject–verb",dis:["walk","walked","walking"]},
+  {s:"There are three ___ on the table.",a:"boxes",cat:"plural",dis:["box","boxs","boxies"]},
+  {s:"The opposite of 'ancient' is ___.",a:"modern",cat:"antonym",dis:["old","early","past"]},
+  {s:"He put the book ___ the shelf.",a:"on",cat:"preposition",dis:["in","at","of"]},
+  {s:"I saw ___ elephant at the zoo.",a:"an",cat:"article",dis:["a","the","some"]},
+  {s:"The mice ___ into the tiny hole.",a:"ran",cat:"past tense",dis:["run","runned","runs"]},
+  {s:"My two front ___ are loose.",a:"teeth",cat:"plural",dis:["tooths","tooth","teeths"]},
+  {s:"The opposite of 'generous' is ___.",a:"selfish",cat:"antonym",dis:["kind","giving","meanless"]},
+  {s:"We waited ___ the rain to stop.",a:"for",cat:"preposition",dis:["to","at","by"]},
+  {s:"Each of the students ___ a pencil.",a:"has",cat:"subject–verb",dis:["have","having","haves"]},
+  {s:"A group of wolves is called a ___.",a:"pack",cat:"vocabulary",dis:["herd","flock","school"]},
+  {s:"The opposite of 'expand' is ___.",a:"shrink",cat:"antonym",dis:["grow","widen","stretch"]},
+  {s:"She is taller ___ her brother.",a:"than",cat:"comparison",dis:["then","that","as"]},
+  {s:"The two ___ crossed the busy street.",a:"women",cat:"plural",dis:["womans","womens","woman"]},
+  {s:"The opposite of 'permanent' is ___.",a:"temporary",cat:"antonym",dis:["forever","lasting","fixed"]},
+  {s:"A baby dog is called a ___.",a:"puppy",cat:"vocabulary",dis:["cub","kitten","calf"]},
+  {s:"Neither the cat nor the dogs ___ hungry.",a:"are",cat:"subject–verb",dis:["is","was","be"]},
+  {s:"The opposite of 'victory' is ___.",a:"defeat",cat:"antonym",dis:["win","success","triumph"]},
+  {s:"They ___ building the bridge last year.",a:"began",cat:"past tense",dis:["begin","beginned","begun"]}
+];
+const SCI_BANK=[
+  {s:"Water freezes at ___ °C.",a:"0",cat:"physical",dis:["10","32","100"]},
+  {s:"Water boils at ___ °C.",a:"100",cat:"physical",dis:["0","50","212"]},
+  {s:"The chemical symbol for oxygen is ___.",a:"O",cat:"chemistry",dis:["Ox","O2","Og"]},
+  {s:"Plants make their own food by a process called ___.",a:"photosynthesis",cat:"life",dis:["respiration","digestion","germination"]},
+  {s:"The closest planet to the Sun is ___.",a:"Mercury",cat:"earth/space",dis:["Venus","Earth","Mars"]},
+  {s:"The force that pulls objects toward Earth is ___.",a:"gravity",cat:"physical",dis:["friction","magnetism","inertia"]},
+  {s:"Humans breathe in oxygen and breathe out ___.",a:"carbon dioxide",cat:"life",dis:["nitrogen","hydrogen","helium"]},
+  {s:"The part of the cell that releases energy is the ___.",a:"mitochondria",cat:"life",dis:["nucleus","ribosome","chloroplast"]},
+  {s:"Water is made of hydrogen and ___.",a:"oxygen",cat:"chemistry",dis:["carbon","nitrogen","helium"]},
+  {s:"A typical insect has ___ legs.",a:"6",cat:"life",dis:["4","8","10"]},
+  {s:"Sound cannot travel through a ___.",a:"vacuum",cat:"physical",dis:["solid","liquid","gas"]},
+  {s:"The Sun is a ___.",a:"star",cat:"earth/space",dis:["planet","moon","comet"]},
+  {s:"Ice is the ___ state of water.",a:"solid",cat:"physical",dis:["liquid","gas","plasma"]},
+  {s:"The organ that pumps blood around the body is the ___.",a:"heart",cat:"life",dis:["lung","liver","kidney"]},
+  {s:"The green pigment that captures sunlight in plants is ___.",a:"chlorophyll",cat:"life",dis:["hemoglobin","keratin","melanin"]},
+  {s:"A push or a pull is called a ___.",a:"force",cat:"physical",dis:["mass","speed","energy"]},
+  {s:"Animals that eat only plants are called ___.",a:"herbivores",cat:"life",dis:["carnivores","omnivores","predators"]},
+  {s:"The layer of gases surrounding the Earth is the ___.",a:"atmosphere",cat:"earth/space",dis:["hydrosphere","lithosphere","biosphere"]},
+  {s:"Matter that flows and takes the shape of its container is a ___.",a:"liquid",cat:"physical",dis:["solid","gas","crystal"]},
+  {s:"The process of water turning into vapor is called ___.",a:"evaporation",cat:"earth/space",dis:["condensation","precipitation","filtration"]}
+];
+const LEVELS={
+  /* ── original arithmetic sets (unchanged) ── */
+  B:{name:'Addition',level:'Level B',blurb:'2-digit addition',cmp:'int',cols:2,perSide:10,
+     make(r){const a=10+Math.floor(r()*80),b=10+Math.floor(r()*80);return{q:a+' + '+b+' =',ans:String(a+b)};}},
+  C:{name:'Multiplication',level:'Level C',blurb:'2-digit × 1-digit',cmp:'int',cols:2,perSide:10,
+     make(r){const a=12+Math.floor(r()*80),b=2+Math.floor(r()*8);return{q:a+' × '+b+' =',ans:String(a*b)};}},
+  D:{name:'Division',level:'Level D',blurb:'exact division',cmp:'int',cols:2,perSide:10,
+     make(r){const b=2+Math.floor(r()*8),q=11+Math.floor(r()*80);return{q:(b*q)+' ÷ '+b+' =',ans:String(q)};}},
+
+  /* ── complex sets (from the test-case kit) ── */
+  MUL2:{name:'Multiplication (2-digit)',level:'Level C',blurb:'2-digit × 1–2 digit',cmp:'int',cols:2,perSide:10,
+    make(r){const twoByTwo=r()<0.45;const a=ri(r,twoByTwo?12:13,twoByTwo?49:99);const b=twoByTwo?ri(r,11,29):ri(r,3,9);const prod=a*b;
+      return{q:a+' × '+b+' =',ans:String(prod),cmp:'int',
+        bad:(rr)=>{const d=pick(rr,[-3,-2,-1,1,2,3,10,-10]);let w=prod+d;if(w<=0)w=prod+Math.abs(d)+prod;return String(w);}};}},
+  DVR:{name:'Division (remainder)',level:'Level D',blurb:'long division, remainder',cmp:'div',cols:1,perSide:8,
+    make(r){const dsor=ri(r,3,12),q=ri(r,6,29),rem=ri(r,0,dsor-1),dividend=dsor*q+rem;const canon=rem===0?String(q):q+' R '+rem;
+      return{q:dividend+' ÷ '+dsor+' =',ans:canon,cmp:'div',
+        bad:(rr)=>{let s;if(rr()<0.5){const qq=q+pick(rr,[-1,1,2]);s=(qq<0?0:qq)+(rem?' R '+rem:'');}else{const r2=(rem+ri(rr,1,dsor-1))%dsor;s=q+(r2?' R '+r2:'');}if(s===canon)s=String(q+1);return s;}};}},
+  FRC:{name:'Fractions',level:'Level E–F',blurb:'add unlike denominators, reduce',cmp:'frac',cols:1,perSide:8,
+    make(r){let d1=ri(r,2,9),d2=ri(r,2,9);if(d2===d1)d2=(d2%9)+2;const n1=ri(r,1,d1-1),n2=ri(r,1,d2-1);
+      let sn=n1*d2+n2*d1,sd=d1*d2;const[rn,rd]=reduce(sn,sd);const canon=rd===1?String(rn):rn+'/'+rd;
+      return{q:n1+'/'+d1+' + '+n2+'/'+d2+' =',ans:canon,cmp:'frac',
+        bad:(rr)=>{let bn=n1+n2,bd=d1+d2;const[xn,xd]=reduce(bn,bd);let s=xd===1?String(xn):xn+'/'+xd;if(fracEq(parseFrac(s),parseFrac(canon)))s=(rn+1)+'/'+(rd||1);return s;}};}},
+  OOO:{name:'Order of Operations',level:'Level F',blurb:'×÷ before +−, parentheses',cmp:'int',cols:1,perSide:8,
+    make(r){const form=ri(r,0,3);let prompt,val;const a=ri(r,2,12),b=ri(r,2,9),c=ri(r,2,9),d=ri(r,2,9);
+      if(form===0){val=a+b*c;prompt=a+' + '+b+' × '+c+' =';}
+      else if(form===1){const aa=Math.max(a,b*c-1)+(b*c);val=aa-b*c;prompt=aa+' − '+b+' × '+c+' =';}
+      else if(form===2){val=(a+b)*c;prompt='( '+a+' + '+b+' ) × '+c+' =';}
+      else{val=a*b+c*d;prompt=a+' × '+b+' + '+c+' × '+d+' =';}
+      return{q:prompt,ans:String(val),cmp:'int',
+        bad:(rr)=>{let lr;if(form===0)lr=(a+b)*c;else if(form===1)lr=null;else if(form===2)lr=a+b*c;else lr=((a*b)+c)*d;let w=(lr!=null&&lr!==val)?lr:val+pick(rr,[-2,-1,1,2,3]);return String(w);}};}},
+  EQN:{name:'Linear Equations',level:'Level H',blurb:'solve ax+b = cx+d for x',cmp:'int',cols:1,perSide:8,
+    make(r){const x=ri(r,-6,12);let a=ri(r,2,9),c=ri(r,1,8);if(c>=a)c=ri(r,1,a-1);if(c<1)c=1;const b=ri(r,-9,12);const d=(a-c)*x+b;
+      const sgn=v=>v<0?'− '+Math.abs(v):'+ '+v;
+      return{q:a+'x '+sgn(b)+' = '+c+'x '+sgn(d)+'   x =',ans:String(x),cmp:'int',
+        bad:(rr)=>{let w=x+pick(rr,[-2,-1,1,2]);if(w===x)w=x+3;if(rr()<0.3)w=-x;if(w===x)w=x+1;return String(w);}};}},
+  ENG:{name:'English',level:'Reading',blurb:'grammar, plurals, antonyms, prepositions',cmp:'text',cols:1,perSide:6,slot:true,
+    generate(r,count){const idx=ENG_BANK.map((_,i)=>i);for(let i=idx.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
+      const out=[];for(let i=0;i<count;i++){const it=ENG_BANK[idx[i%idx.length]];out.push({q:it.s,ans:it.a,cmp:'text',cat:it.cat,dis:it.dis});}return out;}},
+  SCI:{name:'Science',level:'Elementary',blurb:'life, earth & physical science — fill in the blank',cmp:'text',cols:1,perSide:6,slot:true,
+    generate(r,count){const idx=SCI_BANK.map((_,i)=>i);for(let i=idx.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
+      const out=[];for(let i=0;i<count;i++){const it=SCI_BANK[idx[i%idx.length]];out.push({q:it.s,ans:it.a,cmp:'text',cat:it.cat,dis:it.dis});}return out;}}
+};
+
+function buildSyntheticSheet(studentId,level,setCode,seed,examDate,resub,skillOverride){
+  const T=LEVELS[level]||LEVELS.B;
+  const per=T.perSide||10;
   const r=mulberry32(seed);
-  const skill=resub?(0.60+r()*0.15):(0.80+r()*0.17); // resubs had a rougher first pass
+  const defSkill=resub?(0.60+r()*0.15):(0.80+r()*0.17); // resubs had a rougher first pass
+  // always consume the RNG draw above so gen/reload streams match; override only the VALUE
+  const skill=(typeof skillOverride==='number')?skillOverride:defSkill;
   const sides=[0,1].map(si=>{
-    const problems=[];
-    for(let i=0;i<10;i++){
-      const p=LEVELS[level].make(r);
+    const gen = T.generate ? T.generate(r,per) : Array.from({length:per},()=>T.make(r));
+    const problems=gen.map((p,i)=>{
+      const cmp=p.cmp||T.cmp||'int';
+      const rightStr=String(p.ans);
+      const wrongStr = p.bad ? p.bad(r) : (p.dis? pick(r,p.dis) : String(wrongify(+p.ans,r)));
       const isWrong=r()>skill;
-      if(resub&&isWrong){
-        // previously wrong (red ✗ on the sheet) — student has written the corrected answer
-        problems.push({n:si*10+i+1,q:p.q,expected:p.ans,written:p.ans,prevWritten:wrongify(p.ans,r),wasWrong:true,ocr:null,conf:null,correct:null});
-      }else{
-        const written=isWrong?wrongify(p.ans,r):p.ans;
-        problems.push({n:si*10+i+1,q:p.q,expected:p.ans,written,ocr:null,conf:null,correct:null});
+      const base={n:si*per+i+1,q:p.q,expected:rightStr,cmp,cat:p.cat||null,ocr:null,conf:null,correct:null};
+      if(resub){
+        // PRE-GRADED sheet: it came back already marked from a prior pass. Every
+        // problem keeps its prior mark — a green ✓ (was right) or red ✗ (was wrong).
+        // The wrong ones now carry the student's corrected answer (to be ◯-circled green).
+        if(isWrong) return{...base,written:rightStr,prevWritten:wrongStr,prevMark:'x',wasWrong:true};
+        return{...base,written:rightStr,prevMark:'ok'};
       }
-    }
+      return{...base,written:isWrong?wrongStr:rightStr};
+    });
     return{problems};
   });
-  return{id:'WS-'+String(state.nextId++).padStart(4,'0'),studentId,level,setCode,seed,examDate,resub:!!resub,
+  return{id:'WS-'+String(state.nextId++).padStart(4,'0'),studentId,level,setCode,seed,examDate,resub:!!resub,skillUsed:skill,
     source:'synthetic',sides,status:'queued',score:null,wrong:null,corrected:null,gradedAt:null};
 }
 
 async function loadSyntheticBatch(){
-  if(state.sheets.some(s=>s.source==='synthetic') && !(await appConfirm('Add another sample batch?','A sample batch is already loaded. Add 8 more sample sheets?','Add 8 more'))) return;
+  const kind=($('#tType')&&$('#tType').value)||'MIX';
+  const skill=parseFloat(($('#tErr')&&$('#tErr').value)||'0.75');
+  const pre=!!($('#tPre')&&$('#tPre').checked);
+  if(state.sheets.some(s=>s.source==='synthetic') && !(await appConfirm('Add more sample sheets?','A sample batch is already loaded. Add another set of sample sheets?','Add more'))) return;
   const today=new Date();
   const students=['STU-001','STU-002','STU-003'];
-  const plans=[['B','B 141 a'],['B','B 142 a'],['C','C 87 a'],['C','C 88 a'],['D','D 21 a'],['D','D 22 a']];
-  let k=0;
-  students.forEach((stu,si)=>{
-    for(let j=0;j<2;j++){
+
+  if(kind==='MIX'){
+    // original mixed sample: B/C/D across 3 students + 2 corrected resubmissions
+    const plans=[['B','B 141 a'],['B','B 142 a'],['C','C 87 a'],['C','C 88 a'],['D','D 21 a'],['D','D 22 a']];
+    let k=0;
+    students.forEach((stu,si)=>{ for(let j=0;j<2;j++){
       const d=new Date(today); d.setDate(d.getDate()-(12-(k*2)));
       const [lvl,code]=plans[si*2+j];
-      state.sheets.push(buildSyntheticSheet(stu,lvl,code,90210+si*97+j*13,d.toISOString().slice(0,10)));
-      k++;
-    }
-  });
-  // resubmissions: sheets already graded once (red ✗ marks visible) with corrected answers written in —
-  // grading these circles each corrected answer in green.
-  const d2=new Date(today); d2.setDate(d2.getDate()-2);
-  state.sheets.push(buildSyntheticSheet('STU-001','B','B 140 a · resub',77001,d2.toISOString().slice(0,10),true));
-  state.sheets.push(buildSyntheticSheet('STU-003','D','D 20 a · resub',77003,d2.toISOString().slice(0,10),true));
-  state.__ingesting=true;
-  setIntakeGuide('queue','run','Generating 8 sample worksheets (levels B/C/D, duplex, incl. 2 corrected resubmissions)…',true);
-  renderQueue(); saveState();
-  state.__ingesting=false;
-  setIntakeGuide('ready','ok','8 sample sheets queued (2 are corrected resubmissions) — ready for step 2 · Grade.',false);
-  log('Loaded synthetic batch: 8 sheets · 3 student IDs · levels B/C/D · duplex (A+B sides) · 2 resubmissions carrying prior ✗ marks with corrected answers.','ok');
-  showToast('Sample batch loaded — 8 sheets queued (2 corrected resubmissions), ready for step 2 · Grade.');
-  pulseCount('#cQ');
+      state.sheets.push(buildSyntheticSheet(stu,lvl,code,90210+si*97+j*13,d.toISOString().slice(0,10),false,skill)); k++;
+    }});
+    const d2=new Date(today); d2.setDate(d2.getDate()-2);
+    state.sheets.push(buildSyntheticSheet('STU-001','B','B 140 a · resub',77001,d2.toISOString().slice(0,10),true,skill));
+    state.sheets.push(buildSyntheticSheet('STU-003','D','D 20 a · resub',77003,d2.toISOString().slice(0,10),true,skill));
+    finishBatch('8 sample sheets (levels B/C/D · 2 corrected resubmissions)');
+    return;
+  }
+
+  // single-type batch of the selected worksheet
+  const T=LEVELS[kind]; const N=4;
+  for(let j=0;j<N;j++){
+    const stu=students[j%students.length];
+    const d=new Date(today); d.setDate(d.getDate()-(8-j*2));
+    const isPre = pre && (j>=N-2);   // last two are pre-graded resubmissions
+    const code=kind+'-'+(101+j)+(isPre?' · pre-graded':'');
+    state.sheets.push(buildSyntheticSheet(stu,kind,code,hstr(kind+'|'+j)>>>0,d.toISOString().slice(0,10),isPre,skill));
+  }
+  finishBatch(N+' × '+T.name+' sheet(s) ('+T.level+(pre?' · 2 pre-graded resubmissions':'')+')');
+
+  function finishBatch(desc){
+    state.__ingesting=true;
+    setIntakeGuide('queue','run','Generating '+desc+'…',true);
+    renderQueue(); saveState();
+    state.__ingesting=false;
+    setIntakeGuide('ready','ok',desc+' queued — ready for step 2 · Grade.',false);
+    log('Loaded sample batch: '+desc+' · duplex (A+B) · deterministic type-aware grading (green ✓ correct · red ✗ wrong · green ◯ corrected).','ok');
+    showToast(desc+' queued — ready for step 2 · Grade.');
+    pulseCount('#cQ');
+  }
 }
 
 /* ══════════════ canvas rendering (half-letter, 200dpi eq) ══════════════ */
@@ -626,7 +798,8 @@ function renderSide(sheet,si,overlay){
   x.font='800 92px Georgia,serif';
   x.fillText(sheet.setCode+(si?' · B':' · A'),70,140);
   x.font='600 30px system-ui,sans-serif'; x.fillStyle='#5D6B77';
-  x.fillText(LEVELS[sheet.level].name+' — GradeFlow synthetic set (not Kumon material)',70,190);
+  {const T=LEVELS[sheet.level]||LEVELS.B;
+   x.fillText(T.name+' · '+(T.level||'')+' — '+(T.blurb||'')+' (GradeFlow synthetic set, not Kumon material)',70,190);}
 
   // ID / date boxes
   x.strokeStyle='#B9C2CA'; x.lineWidth=2;
@@ -641,67 +814,97 @@ function renderSide(sheet,si,overlay){
   x.beginPath(); x.arc(960,180,86,0,7); x.strokeStyle='#CBD3DA'; x.lineWidth=3; x.stroke();
   x.font='600 20px system-ui,sans-serif'; x.fillStyle='#AEB9C2'; x.fillText('SCORE',930,110);
 
-  // problems: 2 cols × 5 rows
-  const colX=[85,590], startY=440, rowH=232;
-  sheet.sides[si].problems.forEach((p,i)=>{
-    const cx=colX[Math.floor(i/5)], cy=startY+(i%5)*rowH;
-    x.fillStyle='#1D2A35'; x.font='46px Georgia,serif';
-    x.fillText((p.n)+')  '+p.q, cx, cy);
-    // answer underline
-    const qw=x.measureText((p.n)+')  '+p.q).width;
+  // ── problem grid: layout driven by the worksheet TYPE. Short numeric sets use
+  //    two columns; wider sets (remainder division, fractions, order-of-ops,
+  //    equations) use one column so prompt + answer + marks never collide.
+  //    Fill-in-the-blank sets (English, Science) get a sentence + answer slot.
+  //    Every mark is positioned from the *measured* answer width. ──
+  const T=LEVELS[sheet.level]||LEVELS.B;
+  const slotLayout=!!T.slot;                    // sentence + "answer:" slot
+  const LXm=85, RXm=1040;                        // usable page margins
+  const probs=sheet.sides[si].problems;
+  const cols=slotLayout?1:(T.cols||2);
+  const rows=Math.ceil(probs.length/cols);
+  const colGap=40;
+  const colW=(RXm-LXm-(cols-1)*colGap)/cols;
+  const startY=430, availH=(H-90)-startY;
+  const rowH=availH/rows;
+  const isResub=!!sheet.resub;                    // sheet carries a previous grading pass
+  const GREEN='#1E9E5A', RED='#C9403A';
+
+  function promptFont(str,budget){                // serif size that fits the column
+    let fs=slotLayout?30:44; x.font=fs+'px Georgia,serif';
+    while(fs>24 && x.measureText(str).width>budget){fs-=2; x.font=fs+'px Georgia,serif';}
+    return fs;
+  }
+  // consistent mark X: just right of the real answer, clamped inside the column
+  function markXfor(axStart,aw,cx){
+    let mx=axStart+Math.max(aw,120)+34;
+    mx=Math.min(mx, cx+colW-60);                  // stay inside the column
+    mx=Math.max(mx, axStart+aw+14);               // never sit on the answer
+    return mx;
+  }
+  function greenCheck(mx,cy,a){ x.save(); x.globalAlpha=a; x.strokeStyle=GREEN; x.lineWidth=7; x.lineCap='round'; x.lineJoin='round';
+    x.beginPath(); x.moveTo(mx,cy-4); x.lineTo(mx+18,cy+16); x.lineTo(mx+52,cy-40); x.stroke(); x.restore(); }
+  function redCross(mx,cy,a,jit){ x.save(); x.globalAlpha=a; x.strokeStyle=RED; x.lineWidth=7; x.lineCap='round';
+    const jx=jit?(r()-.5)*5:0, jy=jit?(r()-.5)*5:0;
+    x.beginPath(); x.moveTo(mx+jx,cy-34+jy); x.lineTo(mx+40,cy+14); x.moveTo(mx+40+jx,cy-34+jy); x.lineTo(mx,cy+14); x.stroke(); x.restore(); }
+  function greenCircle(axStart,cy,aw){ x.save(); x.strokeStyle=GREEN; x.lineWidth=7; x.lineCap='round';
+    const rx=Math.max(aw/2+16,32), ry=36; x.beginPath(); x.ellipse(axStart+aw/2, cy-16, rx, ry, (r()-.5)*.05, 0, 7); x.stroke(); x.restore(); }
+
+  // one consistent marking routine for every sheet & layout
+  function placeMarks(p, axStart, cy, aw, cx){
+    const mx=markXfor(axStart,aw,cx);
+    if(isResub){
+      // keep the PREVIOUS pass's marks: ✓ where first attempt was right, ✗ where wrong
+      if(p.wasWrong) redCross(mx,cy,0.85,false); else greenCheck(mx,cy,0.85);
+      // this pass circles each corrected (previously-wrong, now-right) answer in green
+      if(overlay && p.wasWrong && p.correct) greenCircle(axStart,cy,aw);
+    } else if(overlay && p.correct!==null){
+      // normal sheet: ✓ for right, ✗ for wrong — the correct value is NOT shown
+      if(p.correct) greenCheck(mx,cy,1); else redCross(mx,cy,1,true);
+    }
+  }
+
+  probs.forEach((p,i)=>{
+    const col=Math.floor(i/rows), row=i%rows;
+    const cx=LXm+col*(colW+colGap);
+    const cyTop=startY+row*rowH;
+
+    if(slotLayout){
+      // fill-in-the-blank: prompt on line 1, answer slot on line 2
+      const cy=cyTop+34, label=(p.n)+')  ';
+      x.fillStyle='#1D2A35'; promptFont(label+p.q,colW-40); x.fillText(label+p.q, cx, cy);
+      const ansY=cy+58, ansX=cx+52;
+      x.fillStyle='#8A97A2'; x.font='24px system-ui,sans-serif'; x.fillText('answer:', cx+18, ansY);
+      x.strokeStyle='#C6CDD4'; x.lineWidth=2; x.beginPath(); x.moveTo(ansX+118,ansY+8); x.lineTo(ansX+118+300,ansY+8); x.stroke();
+      const aFs=42, axStart=ansX+130;
+      x.save(); x.translate(axStart,ansY-2); x.rotate((r()-.5)*.05);
+      x.font=aFs+'px "Comic Sans MS",cursive'; x.fillStyle='#39415C'; x.fillText(String(p.written),0,0); x.restore();
+      x.font=aFs+'px "Comic Sans MS",cursive';
+      placeMarks(p, axStart, ansY, x.measureText(String(p.written)).width, cx);
+      return;
+    }
+
+    // math layout: prompt · underline · handwritten answer · marks to the right
+    const cy=cyTop+(rowH>200?60:44), label=(p.n)+')  ';
+    x.fillStyle='#1D2A35'; promptFont(label+p.q, colW*0.60);
+    const qw=x.measureText(label+p.q).width; x.fillText(label+p.q, cx, cy);
     const ax=cx+qw+18;
-    x.strokeStyle='#C6CDD4'; x.lineWidth=2;
-    x.beginPath(); x.moveTo(ax,cy+8); x.lineTo(ax+150,cy+8); x.stroke();
-    // handwritten answer
-    x.save(); x.translate(ax+18,cy-2); x.rotate((r()-.5)*.09);
-    x.font='58px "Comic Sans MS",cursive'; x.fillStyle='#39415C';
-    x.fillText(String(p.written),0,0); x.restore();
-    p._ax=ax; p._ay=cy; // remember for overlay
-    // prior grading marks baked into the INPUT sheet (resubmission): last pass's red ✗
-    // in the margin + the old wrong answer struck through, corrected answer on the line
-    if(p.wasWrong){
-      x.save();
-      // old wrong answer, small, pencil-struck
-      x.globalAlpha=0.55; x.font='34px "Comic Sans MS",cursive'; x.fillStyle='#6B7280';
-      x.save(); x.translate(ax+22,cy-62); x.rotate((r()-.5)*.08); x.fillText(String(p.prevWritten),0,0);
+    x.strokeStyle='#C6CDD4'; x.lineWidth=2; x.beginPath(); x.moveTo(ax,cy+8); x.lineTo(ax+150,cy+8); x.stroke();
+    const aStr=String(p.written), aFs=aStr.length>4?(aStr.length>8?38:46):56, axStart=ax+16;
+    x.save(); x.translate(axStart,cy-2); x.rotate((r()-.5)*.08);
+    x.font=aFs+'px "Comic Sans MS",cursive'; x.fillStyle='#39415C'; x.fillText(aStr,0,0); x.restore();
+    x.font=aFs+'px "Comic Sans MS",cursive'; const aw=x.measureText(aStr).width;
+
+    // on a pre-graded resubmission the old wrong answer is shown struck-through above
+    if(isResub && p.wasWrong && p.prevWritten!=null){
+      x.save(); x.globalAlpha=0.5; x.font='26px "Comic Sans MS",cursive'; x.fillStyle='#6B7280';
+      x.translate(axStart,cy-56); x.rotate((r()-.5)*.05); x.fillText(String(p.prevWritten),0,0);
       const pw=x.measureText(String(p.prevWritten)).width;
-      x.strokeStyle='#6B7280'; x.lineWidth=3; x.beginPath(); x.moveTo(-4,-10); x.lineTo(pw+4,-14); x.stroke();
-      x.restore();
-      // faded red ✗ from the previous grading pass, in the margin zone
-      x.globalAlpha=0.5; x.strokeStyle='#C9403A'; x.lineWidth=6; x.lineCap='round';
-      x.beginPath();
-      x.moveTo(ax+158,cy-46); x.lineTo(ax+212,cy+12);
-      x.moveTo(ax+212,cy-46); x.lineTo(ax+158,cy+12);
-      x.stroke();
-      x.restore();
+      x.strokeStyle='#6B7280'; x.lineWidth=3; x.beginPath(); x.moveTo(-4,-9); x.lineTo(pw+4,-13); x.stroke(); x.restore();
     }
-    // overlay marks
-    if(overlay && p.correct!==null){
-      x.lineWidth=7; x.lineCap='round';
-      if(p.correct){
-        if(p.wasWrong){
-          // corrected after a prior ✗ — green circle drawn snugly over the corrected answer
-          x.save();
-          x.font='58px "Comic Sans MS",cursive';
-          const aw=x.measureText(String(p.written)).width;
-          const rx=Math.max(38, aw/2+18), ry=34;
-          x.strokeStyle='#1E9E5A';
-          x.beginPath(); x.ellipse(ax+18+aw/2,cy-16,rx,ry,(r()-.5)*.08,0,7); x.stroke();
-          x.restore();
-        }else{
-          x.strokeStyle='#1E9E5A';
-          x.beginPath(); x.moveTo(ax+155,cy-8); x.lineTo(ax+175,cy+14); x.lineTo(ax+215,cy-44); x.stroke();
-        }
-      }else{
-        x.strokeStyle='#C9403A'; x.fillStyle='#C9403A';
-        const jx=(r()-.5)*6, jy=(r()-.5)*6; // slight hand-drawn jitter
-        // X sits just right of the answer line (same zone as the check), never over the answer
-        x.beginPath();
-        x.moveTo(ax+158+jx,cy-46+jy); x.lineTo(ax+212,cy+12);
-        x.moveTo(ax+212+jx,cy-46+jy); x.lineTo(ax+158,cy+12);
-        x.stroke();
-      }
-    }
+    placeMarks(p, axStart, cy, aw, cx);
   });
 
   // overlay stamp + evidence line
@@ -1249,6 +1452,27 @@ function evalExpr(q){
   return null;
 }
 
+/* ══════════════ deterministic type-aware grader ══════════════
+   Recomputes truth from (student answer vs answer key) per the QMS evidence
+   rule — the model/OCR never sets a grade. cmp selects the comparator;
+   absent cmp → integer equality (the original arithmetic behaviour). */
+function gradeCmp(p){
+  const got=p.ocr!=null?p.ocr:p.written, exp=p.expected, cmp=p.cmp||'int';
+  if(cmp==='div'){                    // "17 R 2" / "17 remainder 2" / "17 R0"→"17"
+    const nz=s=>String(s).toUpperCase().replace(/\s+/g,'').replace('REMAINDER','R').replace(/R0$/,'');
+    return nz(got)===nz(exp);
+  }
+  if(cmp==='frac'){return fracEq(parseFrac(got),parseFrac(exp));}
+  if(cmp==='text'){
+    const nt=s=>String(s).toLowerCase().replace(/[.\s]+$/,'').replace(/\s+/g,' ').trim();
+    return nt(got)===nt(exp);
+  }
+  const ni=s=>{const t=String(s).trim();return /^-?\d+$/.test(t)?parseInt(t,10):NaN;};   // int
+  const a=ni(got),b=ni(exp);
+  if(!isNaN(a)&&!isNaN(b))return a===b;
+  return String(got).trim()===String(exp).trim();
+}
+
 async function bocrAttempt(sheet,who){
   if(!($('#bocrUse')&&$('#bocrUse').checked)){ log(sheet.id+' → no further OCR tier enabled — routed to review','wr'); return false; }
   try{
@@ -1302,7 +1526,7 @@ async function runAgent(){
         p.ocr=String(p.written);
         p.conf=+(0.86+r()*0.135).toFixed(3);
       }));
-      log(sheet.id+' → OCR complete · 20 fields · mean conf '+(sheet.sides.flatMap(s=>s.problems).reduce((a,p)=>a+p.conf,0)/20).toFixed(3),'ok');
+      {const _all=sheet.sides.flatMap(s=>s.problems); log(sheet.id+' → OCR complete · '+_all.length+' fields · mean conf '+(_all.reduce((a,p)=>a+p.conf,0)/Math.max(1,_all.length)).toFixed(3),'ok');}
     }else if($('#vlmUse')&&$('#vlmUse').checked&&location.protocol!=='file:'){
       try{
         agentGuide(who+': running the in-browser AI model on the scan (all local)…',true);
@@ -1350,7 +1574,7 @@ async function runAgent(){
     let correct=0,total=0; const wrong=[],corrected=[];
     sheet.sides.forEach(sd=>sd.problems.forEach(p=>{
       if(p.expected==null) p.expected=evalExpr(p.q);
-      p.correct = String(p.ocr)===String(p.expected);
+      p.correct = gradeCmp(p);
       total++;
       if(p.correct){ correct++; if(p.wasWrong)corrected.push(p.n); }
       else wrong.push(p.n);
