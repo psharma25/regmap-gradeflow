@@ -1,24 +1,4 @@
 <!DOCTYPE html>
-<!--
-  ============================================================================
-  GradeFlow AI — GRADING-MARK SPECIFICATION (saved from user request 2026-07-06)
-  ----------------------------------------------------------------------------
-  Marking must be CONSISTENT across every generated / graded sheet:
-    1. Right answer  → a GREEN CHECK (✓).
-    2. Wrong answer  → a RED CROSS (✗).  Do NOT print the correct answer.
-    3. Pre-graded (resubmission) sheet → KEEP the previous pass's marks
-       (green ✓ where first attempt was right, red ✗ where it was wrong) and
-       ADD a GREEN CIRCLE (◯) around each corrected answer.
-    4. Place all marks so they do NOT cover problem text or the student's
-       answer (positioned from the measured answer width), and lay out the
-       generated problems so prompt / answer / marks never overlap.
-    5. Worksheet types are selectable (Intake ▸ Test sheet type), including a
-       Science set and multi-line Calculus sets (derivatives and integrals,
-       graded by polynomial equivalence). The same marking format above applies
-       to every type. Grades are always recomputed by the deterministic engine
-       from the answer key — never from OCR or a model.
-  ============================================================================
--->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -287,6 +267,14 @@ footer b{color:#CFE0EA}
   @page{size:5.5in 8.5in;margin:0}
 }
 @media (prefers-reduced-motion: reduce){*{transition:none !important;animation:none !important}}
+.runmode{display:none;align-items:center;gap:10px;margin:0 0 14px;padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.45;border:1px solid}
+.runmode.ok{background:#eaf7ef;border-color:#bfe3cf;color:#155e3b}
+.runmode.warn{background:#fdf6e7;border-color:#ecd9a8;color:#7a5b12}
+.runmode code{background:rgba(0,0,0,.06);padding:0 4px;border-radius:4px;font-family:var(--mono)}
+.runmode .rmx{margin-left:auto;border:none;background:transparent;font-size:16px;cursor:pointer;color:inherit;opacity:.55;line-height:1;padding:2px 6px}
+.runmode .rmx:hover{opacity:1}
+body.dark .runmode.ok{background:#12261b;color:#8fd6ac}
+body.dark .runmode.warn{background:#2a2410;color:#e3c874}
 </style>
 </head>
 <body>
@@ -311,7 +299,8 @@ footer b{color:#CFE0EA}
   <button data-tab="graded"><span class="stepn">3</span>Graded<span class="count" id="cG">0</span></button><span class="navsep">›</span>
   <button data-tab="output"><span class="stepn">4</span>Output &amp; Print</button><span class="navsep">›</span>
   <button data-tab="reports"><span class="stepn">5</span>Reports</button>
-  <button data-tab="archive" class="aux" style="margin-left:auto">🗄 Archive<span class="count" id="cA">0</span></button>
+  <button data-tab="review" class="aux" style="margin-left:auto">🚩 Needs grading<span class="count" id="cR">0</span></button>
+  <button data-tab="archive" class="aux">🗄 Archive<span class="count" id="cA">0</span></button>
 </nav>
 
 <main>
@@ -319,7 +308,7 @@ footer b{color:#CFE0EA}
 <!-- ════════ INTAKE & QUEUE ════════ -->
 <section class="tab on" id="tab-intake">
   <h2>Intake &amp; queue</h2>
-  <p class="hint">Step 1 of the loop: bring worksheets in, then send them to the grading agent (step 2). Upload a single PDF, a ZIP of scans, or multiple files — or load the synthetic sample batch. Half-letter (5.5″ × 8.5″), duplex: side A + side B per sheet.</p>
+  <div class="runmode" id="runmode" aria-live="polite"></div>
 
   <div class="guide" id="guideIntake" aria-live="polite">
     <div class="gstep" data-g="upload"><span class="gdot">⇪</span>Upload</div><span class="glink"></span>
@@ -334,46 +323,35 @@ footer b{color:#CFE0EA}
   <div class="drop" id="drop">
     <div class="big">Drop scans here or choose files</div>
     <div>Single PDF · ZIP archive · multiple PDFs / PNG / JPG</div>
-    <div class="tkpick" style="margin-top:14px;display:flex;gap:10px 14px;justify-content:center;align-items:end;flex-wrap:wrap">
-      <label style="font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--muted);text-align:left">TEST SHEET TYPE<br>
-        <select id="tType" style="margin-top:4px;min-width:230px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--txt);font-size:13px">
-          <option value="MIX">Mixed sample (B / C / D)</option>
-          <option value="B">Addition — Level B</option>
-          <option value="MUL2">Multiplication (2-digit) — Level C</option>
-          <option value="DVR">Division with remainder — Level D</option>
-          <option value="FRC">Fractions (add &amp; reduce) — Level E–F</option>
-          <option value="OOO">Order of operations — Level F</option>
-          <option value="EQN">Linear equations (solve for x) — Level H</option>
-          <option value="ENG">English (grammar / vocab) — Reading</option>
-          <option value="SCI">Science (fill in the blank) — Elementary</option>
-          <option value="DRV">Derivatives — d/dx of a polynomial — Calculus</option>
-          <option value="INT">Integrals — ∫ p(x) dx (+ C) — Calculus</option>
-        </select>
-      </label>
-      <label style="font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--muted);text-align:left">WRONG-ANSWER RATE<br>
-        <select id="tErr" style="margin-top:4px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--txt);font-size:13px">
-          <option value="0.85">~15% wrong</option>
-          <option value="0.75" selected>~25% wrong</option>
-          <option value="0.60">~40% wrong</option>
-          <option value="1">perfect papers</option>
-        </select>
-      </label>
-      <label style="font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px;padding-bottom:8px">
-        <input type="checkbox" id="tPre"> pre-graded (already ✗-marked)
-      </label>
-    </div>
     <div style="margin-top:12px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="btn pri" id="btnPick">Choose files</button>
-      <button class="btn" id="btnSynth">Generate sample sheets</button>
+      <button class="btn" id="btnSynth">Load synthetic sample batch</button>
     </div>
-    <div class="fmt">Pick a test-sheet type above, then <strong>Generate sample sheets</strong> — or drop real scans. accepts .pdf · .zip · .png · .jpg (embedded JPEG extraction)</div>
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;align-items:center">
+      <label for="sampleSubject" style="font-size:12.5px;color:#5D6B77">Sample test:</label>
+      <select id="sampleSubject" style="padding:6px 8px;border:1px solid #B9C2CA;border-radius:6px;font:inherit"></select>
+      <label for="sampleCount" style="font-size:12.5px;color:#5D6B77">sheets</label>
+      <input type="number" id="sampleCount" min="1" max="6" value="1" style="width:56px;padding:6px 8px;border:1px solid #B9C2CA;border-radius:6px;font:inherit">
+      <label for="sampleKind" style="font-size:12.5px;color:#5D6B77">grading</label>
+      <select id="sampleKind" style="padding:6px 8px;border:1px solid #B9C2CA;border-radius:6px;font:inherit" title="Fresh = ✓/✗ only · Resubmission = carries the prior grading pass with corrected answers circled green · Combination = a mix of both">
+        <option value="mix" selected>Combination (fresh + resubmission)</option>
+        <option value="fresh">Fresh (right / wrong)</option>
+        <option value="resub">Resubmission</option>
+      </select>
+      <label for="samplePencil" style="font-size:12.5px;color:#5D6B77">pencil</label>
+      <select id="samplePencil" style="padding:6px 8px;border:1px solid #B9C2CA;border-radius:6px;font:inherit" title="Faded pencil renders answers faint to simulate light graphite and exercise the faint-recovery preprocessing">
+        <option value="normal" selected>Normal</option>
+        <option value="faded">Faded pencil</option>
+        <option value="mixed">Mixed (some faded)</option>
+      </select>
+      <button class="btn" id="btnSampleTests">Load sample test</button>
+    </div>
     <input type="file" id="filePick" accept=".pdf,.zip,image/png,image/jpeg" multiple hidden>
   </div>
 
   <div id="intakeErrors" aria-live="polite"></div>
 
   <h2 class="framehead">Queued sheets</h2>
-  <p class="hint"><strong>Queued</strong> = ready to grade · <strong>Needs review</strong> = an uploaded scan the deterministic engine won't guess at (enable the local model in step 2, or handle by hand). Tick sheets to download or remove them.</p>
   <div class="toolbar">
     <div class="seg" id="segQ" role="group" aria-label="Queued view mode"><button data-v="cards" class="on">▦ Cards</button><button data-v="compact">☰ Compact</button></div>
     <label class="ckall"><input type="checkbox" id="ckAllQ"> Select all</label>
@@ -411,6 +389,7 @@ footer b{color:#CFE0EA}
   <p class="hint">Mirrors the physical paper path of the alpha rig: feed → duplex scan → OCR → grade → print marks → return. The grading engine is deterministic (reproducible scores, dates and gates); a local model, when connected, writes narrative only.</p>
 
   <div id="runDone"></div>
+  <div id="manualReview"></div>
   <div class="panel">
     <div class="pathway" id="pathway">
       <div class="stage" data-st="feed"><div class="ic">⇥</div><div class="lb">FEED</div></div><div class="link"></div>
@@ -434,6 +413,19 @@ footer b{color:#CFE0EA}
       <span class="dot" id="ocrDot"></span>
       <strong style="font-size:12px">Handwriting reader</strong>
       <span class="hint" style="margin:0" id="ocrHint">Uploaded scans are read automatically, entirely inside your browser — nothing leaves this device. The reader loads itself on first use (one-time download, then cached). Clear pen or print works best; faint or messy writing is set aside for review rather than guessed.</span>
+    </div>
+
+    <div class="olrow panel" style="padding:11px 13px;margin-bottom:12px;flex-wrap:wrap;gap:14px">
+      <strong style="font-size:12px">Scan handling</strong>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="autoRotate" checked> Auto-detect page orientation (fixes upside-down / sideways scans)</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="enhanceFaint" checked> Enhance faint pencil</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">mode
+        <select id="enhanceMode" style="padding:4px 6px;border:1px solid #B9C2CA;border-radius:6px;font:inherit">
+          <option value="readable" selected>Readable (contrast + gamma)</option>
+          <option value="ink">Ink (binarize)</option>
+        </select></label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="deskew"> Deskew small tilt</label>
+      <span class="hint" style="margin:0;flex-basis:100%">Applied to every uploaded scan before reading. Orientation is chosen by trying 0°/90°/180°/270° and keeping the one that yields the most readable problems; faint graphite is lifted to solid ink locally. If a page still won't read, use <b>↻ Rotate</b> on its card to set the orientation by hand, or rescan darker at 300 dpi.</span>
     </div>
     <!-- hidden defaults: users don't choose models; the engine selects and falls back on its own -->
     <input type="hidden" id="vlmModel" value="HuggingFaceTB/SmolVLM-256M-Instruct">
@@ -515,6 +507,16 @@ footer b{color:#CFE0EA}
 </section>
 
 <!-- ════════ ARCHIVE ════════ -->
+<section class="tab" id="tab-review">
+  <h2>Needs manual grading</h2>
+  <p class="hint">Sheets the grading agent could not complete — unreadable / not-fixable scans, grading failures, or scans with no OCR tier enabled. The batch set these aside and graded everything else. Fix the cause (↻ rotate, rescan darker at 300 dpi, or enable a reader in step 2), then re-queue for another pass — or grade them by hand.</p>
+  <div class="toolbar">
+    <span class="selinfo" id="reviewInfo">0 need grading</span>
+    <button class="btn" id="btnRequeueAll">⤴ Re-queue all for grading</button>
+  </div>
+  <div class="queue" id="reviewList"></div>
+</section>
+
 <section class="tab" id="tab-archive">
   <h2>Archive</h2>
   <p class="hint">Archived sheets leave the active pipeline — queue, graded frame, and output &amp; print — but stay in Reports as history, marked 🗄. Restore them to keep working, download them as a PDF, or remove them permanently.</p>
@@ -543,6 +545,549 @@ footer b{color:#CFE0EA}
 <div id="printArea" aria-hidden="true"></div>
 
 <script>
+
+/* ═══════════════════════════════════════════════════════════════════════
+   GradeFlow OCR preprocessing pipeline (embedded, single-file, no CDN).
+   Stages: grayscale -> CLAHE -> Hough deskew -> Sauvola -> grid removal
+   -> ROI + confidence gate. Registers window.GradeFlowPreproc.
+   ═══════════════════════════════════════════════════════════════════════ */
+/* =====================================================================
+ * GradeFlow OCR Preprocessing Pipeline
+ * ---------------------------------------------------------------------
+ * Vanilla JS. No imports. No CDN. Deterministic (no RNG).
+ * Operates on canvas ImageData in the browser, and on plain
+ * {data:Uint8ClampedArray, width, height} objects in Node for testing.
+ *
+ * Stage order (fixed — this is the part that matters):
+ *   grayscale
+ *     -> illumination normalize (CLAHE or background-division)
+ *     -> detect skew (Hough over grid/rule lines)
+ *     -> rotate the GRAYSCALE image (single high-quality interpolation)
+ *     -> Sauvola adaptive binarization   [faded-marking recovery]
+ *     -> grid / rule-line removal
+ *     -> ROI crop
+ *     -> (hand the result to Tesseract)
+ *
+ * Plus a resolution/confidence GATE that decides whether a read can be
+ * trusted, escalated (WebGPU higher-res), or flagged for manual review.
+ * The gate NEVER sets a grade. OCR reads; the deterministic engine
+ * decides correct/wrong; the renderer places marks.
+ *
+ * meta.rotation lets you inverse-map mark coordinates from the deskewed
+ * sheet back to original orientation, so check/cross/circle placement
+ * lands correctly whichever artifact you choose to present.
+ * ===================================================================== */
+(function (root) {
+  'use strict';
+
+  /* ---------- image container helpers -------------------------------- */
+
+  // Grayscale single-channel image: { data: Float32Array(w*h), width, height }
+  function grayImage(width, height) {
+    return { data: new Float32Array(width * height), width: width, height: height };
+  }
+
+  function fromImageData(imageData) {
+    // Accepts a real ImageData or any {data,width,height} with RGBA data.
+    var w = imageData.width, h = imageData.height, src = imageData.data;
+    var out = grayImage(w, h);
+    var d = out.data;
+    for (var i = 0, p = 0; i < d.length; i++, p += 4) {
+      // Rec.601 luma
+      d[i] = 0.299 * src[p] + 0.587 * src[p + 1] + 0.114 * src[p + 2];
+    }
+    return out;
+  }
+
+  function toImageData(gray) {
+    var w = gray.width, h = gray.height, d = gray.data;
+    var rgba = new Uint8ClampedArray(w * h * 4);
+    for (var i = 0, p = 0; i < d.length; i++, p += 4) {
+      var v = d[i] < 0 ? 0 : d[i] > 255 ? 255 : d[i];
+      rgba[p] = rgba[p + 1] = rgba[p + 2] = v;
+      rgba[p + 3] = 255;
+    }
+    if (typeof ImageData !== 'undefined') {
+      return new ImageData(rgba, w, h);
+    }
+    return { data: rgba, width: w, height: h };
+  }
+
+  function cloneGray(g) {
+    var c = grayImage(g.width, g.height);
+    c.data.set(g.data);
+    return c;
+  }
+
+  /* ---------- integral images (for O(1) box stats) ------------------- */
+
+  // Returns prefix-sum table of size (w+1)*(h+1). sq=true -> sum of squares.
+  function integral(gray, sq) {
+    var w = gray.width, h = gray.height, d = gray.data;
+    var W = w + 1;
+    var I = new Float64Array(W * (h + 1));
+    for (var y = 0; y < h; y++) {
+      var rowSum = 0;
+      var yo = y * w, Yo = (y + 1) * W, Yp = y * W;
+      for (var x = 0; x < w; x++) {
+        var v = d[yo + x];
+        rowSum += sq ? v * v : v;
+        I[Yo + x + 1] = I[Yp + x + 1] + rowSum;
+      }
+    }
+    return I;
+  }
+
+  // Sum over inclusive rect [x0..x1]x[y0..y1] using an integral table.
+  function boxSum(I, W, x0, y0, x1, y1) {
+    var A = I[y0 * W + x0];
+    var B = I[y0 * W + (x1 + 1)];
+    var C = I[(y1 + 1) * W + x0];
+    var D = I[(y1 + 1) * W + (x1 + 1)];
+    return D - B - C + A;
+  }
+
+  /* ---------- stage 1: CLAHE ----------------------------------------- */
+  // Contrast-Limited Adaptive Histogram Equalization on 0..255 grayscale.
+  function clahe(gray, opts) {
+    opts = opts || {};
+    var tilesX = opts.tilesX || 8;
+    var tilesY = opts.tilesY || 8;
+    var clip = opts.clipLimit != null ? opts.clipLimit : 2.5; // x average bin
+    var bins = 256;
+    var w = gray.width, h = gray.height, d = gray.data;
+
+    var twf = w / tilesX, thf = h / tilesY;
+    // Build a mapping LUT per tile.
+    var maps = new Array(tilesX * tilesY);
+    for (var ty = 0; ty < tilesY; ty++) {
+      var y0 = Math.floor(ty * thf), y1 = Math.floor((ty + 1) * thf) - 1;
+      if (y1 < y0) y1 = y0;
+      for (var tx = 0; tx < tilesX; tx++) {
+        var x0 = Math.floor(tx * twf), x1 = Math.floor((tx + 1) * twf) - 1;
+        if (x1 < x0) x1 = x0;
+        var hist = new Float64Array(bins);
+        var count = 0;
+        for (var yy = y0; yy <= y1; yy++) {
+          var ro = yy * w;
+          for (var xx = x0; xx <= x1; xx++) {
+            var b = d[ro + xx] | 0;
+            if (b < 0) b = 0; else if (b > 255) b = 255;
+            hist[b]++; count++;
+          }
+        }
+        // clip + redistribute
+        var clipCount = clip * count / bins;
+        var excess = 0, bi;
+        for (bi = 0; bi < bins; bi++) {
+          if (hist[bi] > clipCount) { excess += hist[bi] - clipCount; hist[bi] = clipCount; }
+        }
+        var give = excess / bins;
+        for (bi = 0; bi < bins; bi++) hist[bi] += give;
+        // CDF -> LUT
+        var lut = new Float32Array(bins);
+        var cum = 0, scale = count > 0 ? 255 / count : 0;
+        for (bi = 0; bi < bins; bi++) { cum += hist[bi]; lut[bi] = cum * scale; }
+        maps[ty * tilesX + tx] = lut;
+      }
+    }
+
+    // Bilinear interpolation of tile mappings across the image.
+    var out = grayImage(w, h), od = out.data;
+    for (var y = 0; y < h; y++) {
+      var gy = (y + 0.5) / thf - 0.5;
+      var ty0 = Math.floor(gy); var fy = gy - ty0;
+      var tya = ty0 < 0 ? 0 : ty0 >= tilesY ? tilesY - 1 : ty0;
+      var tyb = ty0 + 1 < 0 ? 0 : ty0 + 1 >= tilesY ? tilesY - 1 : ty0 + 1;
+      for (var x = 0; x < w; x++) {
+        var gx = (x + 0.5) / twf - 0.5;
+        var tx0 = Math.floor(gx); var fx = gx - tx0;
+        var txa = tx0 < 0 ? 0 : tx0 >= tilesX ? tilesX - 1 : tx0;
+        var txb = tx0 + 1 < 0 ? 0 : tx0 + 1 >= tilesX ? tilesX - 1 : tx0 + 1;
+        var v = d[y * w + x] | 0; if (v < 0) v = 0; else if (v > 255) v = 255;
+        var m00 = maps[tya * tilesX + txa][v];
+        var m01 = maps[tya * tilesX + txb][v];
+        var m10 = maps[tyb * tilesX + txa][v];
+        var m11 = maps[tyb * tilesX + txb][v];
+        var top = m00 + (m01 - m00) * fx;
+        var bot = m10 + (m11 - m10) * fx;
+        od[y * w + x] = top + (bot - top) * fy;
+      }
+    }
+    return out;
+  }
+
+  /* ---------- stage 1 (alt): background-division flatten -------------- */
+  // Divides out a large-radius background estimate. Good for phone
+  // captures with uneven lighting; lifts faint strokes vs local paper.
+  function backgroundDivide(gray, opts) {
+    opts = opts || {};
+    var r = opts.radius || 25;
+    var w = gray.width, h = gray.height, d = gray.data;
+    var I = integral(gray, false), W = w + 1;
+    var out = grayImage(w, h), od = out.data;
+    var globalMean = boxSum(I, W, 0, 0, w - 1, h - 1) / (w * h);
+    for (var y = 0; y < h; y++) {
+      var y0 = y - r < 0 ? 0 : y - r, y1 = y + r >= h ? h - 1 : y + r;
+      for (var x = 0; x < w; x++) {
+        var x0 = x - r < 0 ? 0 : x - r, x1 = x + r >= w ? w - 1 : x + r;
+        var area = (x1 - x0 + 1) * (y1 - y0 + 1);
+        var bg = boxSum(I, W, x0, y0, x1, y1) / area;
+        var v = d[y * w + x] / (bg + 1e-6) * globalMean;
+        od[y * w + x] = v > 255 ? 255 : v;
+      }
+    }
+    return out;
+  }
+
+  /* ---------- Otsu (global) — helper for skew detection --------------- */
+  function otsuThreshold(gray) {
+    var d = gray.data, n = d.length;
+    var hist = new Float64Array(256);
+    for (var i = 0; i < n; i++) {
+      var v = d[i] | 0; if (v < 0) v = 0; else if (v > 255) v = 255; hist[v]++;
+    }
+    var sum = 0, k;
+    for (k = 0; k < 256; k++) sum += k * hist[k];
+    var sumB = 0, wB = 0, maxVar = -1, thr = 127;
+    for (k = 0; k < 256; k++) {
+      wB += hist[k]; if (wB === 0) continue;
+      var wF = n - wB; if (wF === 0) break;
+      sumB += k * hist[k];
+      var mB = sumB / wB, mF = (sum - sumB) / wF;
+      var between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > maxVar) { maxVar = between; thr = k; }
+    }
+    return thr;
+  }
+
+  /* ---------- stage 2: Hough skew detection -------------------------- */
+  // Detects the dominant near-horizontal line orientation (grid/rule
+  // lines dominate the accumulator). Returns the deviation-from-level
+  // angle in degrees; correcting the page = rotate by -angle.
+  function detectSkew(gray, opts) {
+    opts = opts || {};
+    var maxAngle = opts.maxAngle != null ? opts.maxAngle : 15;   // degrees
+    var step = opts.angleStep != null ? opts.angleStep : 0.2;    // degrees
+    var w = gray.width, h = gray.height, d = gray.data;
+    var thr = otsuThreshold(gray);
+
+    // Emphasize horizontal structure: keep dark pixels that have a dark
+    // left/right neighbor (line-ish), subsample to bound cost.
+    var pts = [];
+    var stepPx = Math.max(1, Math.floor(Math.sqrt(w * h) / 400));
+    for (var y = 1; y < h - 1; y += stepPx) {
+      var ro = y * w;
+      for (var x = 1; x < w - 1; x += stepPx) {
+        if (d[ro + x] <= thr && (d[ro + x - 1] <= thr || d[ro + x + 1] <= thr)) {
+          pts.push(x, y);
+        }
+      }
+    }
+    if (pts.length < 6) return 0;
+
+    var nA = Math.floor((2 * maxAngle) / step) + 1;
+    var diag = Math.ceil(Math.sqrt(w * w + h * h));
+    var rhoOff = diag;                 // shift so rho >= 0
+    var nRho = 2 * diag + 1;
+    // energy[a] = sum of squares of rho-bin votes -> sharp lines score high
+    var best = 0, bestAngle = 0;
+    for (var a = 0; a < nA; a++) {
+      var ang = (-maxAngle + a * step);
+      // near-horizontal line normal is ~vertical: theta = 90deg + ang
+      var t = (90 + ang) * Math.PI / 180;
+      var ct = Math.cos(t), st = Math.sin(t);
+      var acc = new Uint32Array(nRho);
+      for (var p = 0; p < pts.length; p += 2) {
+        var rho = (pts[p] * ct + pts[p + 1] * st) | 0;
+        var idx = rho + rhoOff;
+        if (idx >= 0 && idx < nRho) acc[idx]++;
+      }
+      var energy = 0;
+      for (var r = 0; r < nRho; r++) { var c = acc[r]; energy += c * c; }
+      if (energy > best) { best = energy; bestAngle = ang; }
+    }
+    return bestAngle;
+  }
+
+  /* ---------- stage 3: rotate grayscale (bilinear) ------------------- */
+  // Rotates about image center by angleDeg (CCW positive). Background
+  // fills with white (255) — document assumption. Same output size.
+  function rotate(gray, angleDeg, fill) {
+    var w = gray.width, h = gray.height, d = gray.data;
+    if (Math.abs(angleDeg) < 1e-4) return cloneGray(gray);
+    fill = fill == null ? 255 : fill;
+    var out = grayImage(w, h), od = out.data;
+    var cx = (w - 1) / 2, cy = (h - 1) / 2;
+    var rad = angleDeg * Math.PI / 180;
+    var cs = Math.cos(rad), sn = Math.sin(rad);
+    for (var y = 0; y < h; y++) {
+      var dy = y - cy;
+      for (var x = 0; x < w; x++) {
+        var dx = x - cx;
+        // inverse-map output pixel to source (rotate by -angle)
+        var sx = cs * dx + sn * dy + cx;
+        var sy = -sn * dx + cs * dy + cy;
+        if (sx < 0 || sx > w - 1 || sy < 0 || sy > h - 1) {
+          od[y * w + x] = fill; continue;
+        }
+        var x0 = Math.floor(sx), y0 = Math.floor(sy);
+        var x1 = x0 + 1 > w - 1 ? x0 : x0 + 1;
+        var y1 = y0 + 1 > h - 1 ? y0 : y0 + 1;
+        var fx = sx - x0, fy = sy - y0;
+        var v00 = d[y0 * w + x0], v01 = d[y0 * w + x1];
+        var v10 = d[y1 * w + x0], v11 = d[y1 * w + x1];
+        var top = v00 + (v01 - v00) * fx;
+        var bot = v10 + (v11 - v10) * fx;
+        od[y * w + x] = top + (bot - top) * fy;
+      }
+    }
+    return out;
+  }
+
+  /* ---------- stage 4: Sauvola adaptive binarization ----------------- */
+  // Local threshold T = m * (1 + k*((s/R) - 1)). Lower k recovers fainter
+  // strokes (more willing to call faint ink "ink"). ink=0, paper=255.
+  function sauvola(gray, opts) {
+    opts = opts || {};
+    var win = opts.window || 19;      // odd window, ~stroke scale
+    var k = opts.k != null ? opts.k : 0.2;
+    var R = opts.R != null ? opts.R : 128;
+    var r = win >> 1;
+    var w = gray.width, h = gray.height, d = gray.data;
+    var I = integral(gray, false), I2 = integral(gray, true), W = w + 1;
+    var out = grayImage(w, h), od = out.data;
+    for (var y = 0; y < h; y++) {
+      var y0 = y - r < 0 ? 0 : y - r, y1 = y + r >= h ? h - 1 : y + r;
+      for (var x = 0; x < w; x++) {
+        var x0 = x - r < 0 ? 0 : x - r, x1 = x + r >= w ? w - 1 : x + r;
+        var area = (x1 - x0 + 1) * (y1 - y0 + 1);
+        var s1 = boxSum(I, W, x0, y0, x1, y1);
+        var s2 = boxSum(I2, W, x0, y0, x1, y1);
+        var mean = s1 / area;
+        var varr = s2 / area - mean * mean; if (varr < 0) varr = 0;
+        var std = Math.sqrt(varr);
+        var T = mean * (1 + k * (std / R - 1));
+        od[y * w + x] = d[y * w + x] < T ? 0 : 255;
+      }
+    }
+    return out;
+  }
+
+  /* ---------- stage 5: grid / rule-line removal ---------------------- */
+  // Removes long horizontal & vertical ink runs (worksheet ruling) while
+  // repairing glyph strokes that merely cross a removed line.
+  function removeGridLines(binary, opts) {
+    opts = opts || {};
+    var w = binary.width, h = binary.height, d = binary.data;
+    var minH = opts.minHLine || Math.floor(w * 0.4);
+    var minV = opts.minVLine || Math.floor(h * 0.4);
+    var out = cloneGray(binary), od = out.data;
+    var line = new Uint8Array(w * h); // 1 = detected line pixel
+
+    // horizontal runs
+    var x, y, run;
+    for (y = 0; y < h; y++) {
+      var ro = y * w; x = 0;
+      while (x < w) {
+        if (d[ro + x] === 0) {
+          var xs = x; while (x < w && d[ro + x] === 0) x++;
+          if (x - xs >= minH) for (var xi = xs; xi < x; xi++) line[ro + xi] = 1;
+        } else x++;
+      }
+    }
+    // vertical runs
+    for (x = 0; x < w; x++) {
+      y = 0;
+      while (y < h) {
+        if (d[y * w + x] === 0) {
+          var ys = y; while (y < h && d[y * w + x] === 0) y++;
+          if (y - ys >= minV) for (var yi = ys; yi < y; yi++) line[yi * w + x] = 1;
+        } else y++;
+      }
+    }
+    // remove line pixels, but repair those with vertical OR horizontal
+    // stroke continuity (a real glyph crossing the line).
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        var i = y * w + x;
+        if (!line[i]) continue;
+        var vertCross = (y > 0 && d[i - w] === 0 && !line[i - w]) &&
+                        (y < h - 1 && d[i + w] === 0 && !line[i + w]);
+        var horizCross = (x > 0 && d[i - 1] === 0 && !line[i - 1]) &&
+                         (x < w - 1 && d[i + 1] === 0 && !line[i + 1]);
+        od[i] = (vertCross || horizCross) ? 0 : 255;
+      }
+    }
+    return out;
+  }
+
+  /* ---------- stage 6: ROI crop -------------------------------------- */
+  function cropROI(gray, rect) {
+    var x = Math.max(0, rect.x | 0), y = Math.max(0, rect.y | 0);
+    var wRect = Math.min(gray.width - x, rect.w | 0);
+    var hRect = Math.min(gray.height - y, rect.h | 0);
+    var out = grayImage(wRect, hRect), od = out.data, sd = gray.data, sw = gray.width;
+    for (var yy = 0; yy < hRect; yy++) {
+      for (var xx = 0; xx < wRect; xx++) {
+        od[yy * wRect + xx] = sd[(y + yy) * sw + (x + xx)];
+      }
+    }
+    return out;
+  }
+
+  /* ---------- resolution / confidence gate --------------------------- */
+  // Estimates whether a (binarized) region is trustworthy. Returns a
+  // recommendation only — it never assigns a grade.
+  function assessRegion(binaryRegion, grayRegion, opts) {
+    opts = opts || {};
+    var minGlyphPx = opts.minGlyphPx || 18;   // Tesseract sweet spot ~20-30
+    var minContrast = opts.minContrast || 40; // p95-p5 on grayscale
+    var minInkFrac = opts.minInkFrac || 0.005;
+
+    var w = binaryRegion.width, h = binaryRegion.height, bd = binaryRegion.data;
+    // ink pixels + vertical extent of ink rows -> rough glyph height
+    var ink = 0, topY = -1, botY = -1;
+    for (var y = 0; y < h; y++) {
+      var rowInk = false, ro = y * w;
+      for (var x = 0; x < w; x++) if (bd[ro + x] === 0) { ink++; rowInk = true; }
+      if (rowInk) { if (topY < 0) topY = y; botY = y; }
+    }
+    var inkFrac = ink / (w * h);
+    var glyphPx = botY >= topY ? (botY - topY + 1) : 0;
+
+    // grayscale contrast (p5..p95)
+    var contrast = 255;
+    if (grayRegion) {
+      var gd = grayRegion.data, n = gd.length;
+      var hist = new Uint32Array(256), i, v;
+      for (i = 0; i < n; i++) { v = gd[i] | 0; if (v < 0) v = 0; else if (v > 255) v = 255; hist[v]++; }
+      var lo = pct(hist, n, 0.05), hi = pct(hist, n, 0.95);
+      contrast = hi - lo;
+    }
+
+    var reasons = [];
+    if (glyphPx > 0 && glyphPx < minGlyphPx) reasons.push('glyph-too-small');
+    if (contrast < minContrast) reasons.push('low-contrast');
+    if (inkFrac < minInkFrac) reasons.push('sparse-ink');
+
+    var recommendation = 'trust';
+    if (reasons.length) recommendation = reasons.indexOf('glyph-too-small') >= 0 ? 'escalate' : 'review';
+
+    return {
+      inkFraction: inkFrac,
+      estGlyphHeightPx: glyphPx,
+      contrast: contrast,
+      flags: reasons,
+      recommendation: recommendation // 'trust' | 'escalate' (WebGPU hi-res) | 'review' (manual)
+    };
+  }
+
+  function pct(hist, n, p) {
+    var target = p * n, cum = 0;
+    for (var i = 0; i < 256; i++) { cum += hist[i]; if (cum >= target) return i; }
+    return 255;
+  }
+
+  /* ---------- coordinate mapping for mark placement ------------------ */
+  // Deskewed-space point -> original-orientation point. Use when you mark
+  // on the normalized sheet but must render on the original scan.
+  function deskewedToOriginal(pt, meta) {
+    if (!meta || !meta.rotation || Math.abs(meta.rotation.angleDeg) < 1e-4) {
+      return { x: pt.x, y: pt.y };
+    }
+    var a = -meta.rotation.angleDeg * Math.PI / 180; // inverse of applied
+    var cx = meta.rotation.cx, cy = meta.rotation.cy;
+    var cs = Math.cos(a), sn = Math.sin(a);
+    var dx = pt.x - cx, dy = pt.y - cy;
+    return { x: cs * dx - sn * dy + cx, y: sn * dx + cs * dy + cy };
+  }
+
+  /* ---------- orchestrator ------------------------------------------- */
+  // input:  ImageData (or {data,width,height} RGBA)
+  // output: { imageData, gray, binary, meta, regions? }
+  function runPipeline(input, config) {
+    config = config || {};
+    var meta = { stages: [], rotation: null, gate: null };
+
+    var gray = fromImageData(input);
+    meta.stages.push('grayscale');
+
+    // stage 1: illumination
+    var illum = config.illumination || 'clahe';
+    if (illum === 'clahe') { gray = clahe(gray, config.clahe); meta.stages.push('clahe'); }
+    else if (illum === 'divide') { gray = backgroundDivide(gray, config.divide); meta.stages.push('background-divide'); }
+
+    // stage 2+3: deskew (detect on current gray, rotate the gray)
+    var deskew = config.deskew || {};
+    if (deskew.enabled !== false) {
+      var angle = detectSkew(gray, deskew);
+      meta.detectedSkewDeg = angle;
+      if (Math.abs(angle) >= (deskew.minApplyDeg != null ? deskew.minApplyDeg : 0.3)) {
+        gray = rotate(gray, -angle, deskew.fill);
+        meta.rotation = { angleDeg: -angle, cx: (gray.width - 1) / 2, cy: (gray.height - 1) / 2 };
+        meta.stages.push('deskew(' + (-angle).toFixed(2) + ')');
+      } else {
+        meta.stages.push('deskew(skipped)');
+      }
+    }
+    var grayDeskewed = cloneGray(gray); // keep for gate contrast measurement
+
+    // stage 4: Sauvola (+ grid removal). When binarize:false we still compute
+    // a binary internally for the confidence gate, but output grayscale.
+    var doBin = config.binarize !== false;
+    var binary = sauvola(gray, config.sauvola);
+    meta.stages.push('sauvola(k=' + (config.sauvola && config.sauvola.k != null ? config.sauvola.k : 0.2) + ')');
+
+    // stage 5: grid removal (only meaningful for the binary output path)
+    if (doBin && (!config.gridRemoval || config.gridRemoval.enabled !== false)) {
+      binary = removeGridLines(binary, config.gridRemoval);
+      meta.stages.push('grid-removal');
+    }
+
+    var outSource = doBin ? binary : grayDeskewed;
+
+    // stage 6: ROI crop + per-region gate
+    var result = { gray: grayDeskewed, binary: binary, meta: meta };
+    if (config.roi) {
+      var rects = Array.isArray(config.roi) ? config.roi : [config.roi];
+      result.regions = rects.map(function (rect, idx) {
+        var b = cropROI(binary, rect);
+        var g = cropROI(grayDeskewed, rect);
+        return {
+          index: idx, rect: rect,
+          imageData: toImageData(cropROI(outSource, rect)),
+          gate: assessRegion(b, g, config.gate)
+        };
+      });
+      meta.stages.push('roi-crop(' + rects.length + ')');
+    } else {
+      // whole-sheet gate summary (always computed from the binary)
+      meta.gate = assessRegion(binary, grayDeskewed, config.gate);
+    }
+
+    result.imageData = toImageData(outSource);
+    return result;
+  }
+
+  /* ---------- exports ------------------------------------------------- */
+  var api = {
+    runPipeline: runPipeline,
+    // stages exposed for custom composition / testing
+    fromImageData: fromImageData, toImageData: toImageData,
+    clahe: clahe, backgroundDivide: backgroundDivide,
+    otsuThreshold: otsuThreshold, detectSkew: detectSkew,
+    rotate: rotate, sauvola: sauvola, removeGridLines: removeGridLines,
+    cropROI: cropROI, assessRegion: assessRegion,
+    deskewedToOriginal: deskewedToOriginal
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.GradeFlowPreproc = api;
+
+})(typeof self !== 'undefined' ? self : this);
+
+/* ═══════════ end embedded preprocessing pipeline ═══════════ */
 'use strict';
 /* ═══════════════════════════════════════════════════════════════
    GradeFlow AI · single-file alpha console · BitSense pattern:
@@ -571,8 +1116,9 @@ const state={
 function saveState(){
   try{
     const slim=state.sheets.filter(s=>s.source==='synthetic').map(s=>({
-      id:s.id,studentId:s.studentId,setCode:s.setCode,level:s.level,seed:s.seed,archived:!!s.archived,resub:!!s.resub,skill:s.skillUsed,
-      examDate:s.examDate,status:s.status,score:s.score,wrong:s.wrong,corrected:s.corrected,gradedAt:s.gradedAt
+      id:s.id,studentId:s.studentId,setCode:s.setCode,level:s.level,seed:s.seed,archived:!!s.archived,resub:!!s.resub,faded:!!s.faded,
+      examDate:s.examDate,status:s.status,score:s.score,wrong:s.wrong,corrected:s.corrected,gradedAt:s.gradedAt,
+      notFixable:!!s.notFixable,notFixableReason:s.notFixableReason||null,gradeFailed:!!s.gradeFailed,gradeFailReason:s.gradeFailReason||null
     }));
     localStorage.setItem('gfalpha',JSON.stringify({slim,rel:state.rel,jobLog:state.jobLog.slice(-40),nextId:state.nextId,
       view:state.view,printer:$('#oPrinter')?$('#oPrinter').value:'system'}));
@@ -586,8 +1132,9 @@ function loadState(){
     if(d.view) state.view=d.view;
     if(d.printer&&$('#oPrinter'))$('#oPrinter').value=d.printer;
     (d.slim||[]).forEach(m=>{
-      const sh=buildSyntheticSheet(m.studentId,m.level,m.setCode,m.seed,m.examDate,m.resub,m.skill);
-      Object.assign(sh,{id:m.id,status:m.status,score:m.score,wrong:m.wrong,corrected:m.corrected,gradedAt:m.gradedAt,archived:!!m.archived});
+      const sh=buildSyntheticSheet(m.studentId,m.level,m.setCode,m.seed,m.examDate,(m.resub||m.pregraded),m.faded);
+      Object.assign(sh,{id:m.id,status:m.status,score:m.score,wrong:m.wrong,corrected:m.corrected,gradedAt:m.gradedAt,archived:!!m.archived,
+        notFixable:!!m.notFixable,notFixableReason:m.notFixableReason||null,gradeFailed:!!m.gradeFailed,gradeFailReason:m.gradeFailReason||null});
       state.sheets.push(sh);
     });
     return state.sheets.length>0;
@@ -595,273 +1142,189 @@ function loadState(){
 }
 
 /* ══════════════ synthetic worksheet generation ══════════════ */
-/* ── seeded helpers (deterministic — reproducibility is a QMS requirement) ── */
-const ri=(r,lo,hi)=>lo+Math.floor(r()*(hi-lo+1));           // inclusive int
-const pick=(r,arr)=>arr[Math.floor(r()*arr.length)];
-const gcd=(a,b)=>{a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b];}return a||1;};
-function reduce(n,d){const g=gcd(n,d);return [n/g,d/g];}
-function parseFrac(s){                                       // "a/b" | "w a/b" | "n" → {n,d}
-  if(s==null)return null; s=String(s).trim().replace(/\s+/g,' ');
-  let m=s.match(/^(-?\d+)\s+(\d+)\/(\d+)$/); if(m){const w=+m[1],n=+m[2],d=+m[3];if(!d)return null;const sg=w<0?-1:1;return{n:sg*(Math.abs(w)*d+n),d};}
-  m=s.match(/^(-?\d+)\/(-?\d+)$/); if(m){const d=+m[2];if(!d)return null;return{n:+m[1],d};}
-  m=s.match(/^-?\d+$/); if(m)return{n:+s,d:1};
-  return null;
-}
-const fracEq=(a,b)=>a&&b&&a.n*b.d===b.n*a.d;
-/* ── polynomial helpers (derivative / integral grading) ──
-   A polynomial is a map {exponent: coefficient}. polyStr renders with unicode
-   superscripts; parsePoly tolerates x^2 / x² / spaces / unicode minus and
-   strips a trailing "+ C"; polyEq compares maps exactly. */
-const SUP={0:'',1:'',2:'²',3:'³',4:'⁴',5:'⁵',6:'⁶'};
-function termStr(c,e){const a=Math.abs(c);
-  if(e===0)return String(a);
-  const base=(a===1?'':a)+'x'+(e===1?'':(SUP[e]||('^'+e)));return base;}
-function polyStr(map){
-  const es=Object.keys(map).map(Number).filter(e=>map[e]!==0).sort((x,y)=>y-x);
-  if(!es.length)return '0';
-  let s='';
-  es.forEach((e,i)=>{const c=map[e];
-    if(i===0)s+=(c<0?'−':'')+termStr(c,e);
-    else s+=(c<0?' − ':' + ')+termStr(c,e);});
-  return s;
-}
-function parsePoly(str){
-  if(str==null)return null;
-  let s=String(str).toLowerCase().replace(/²/g,'^2').replace(/³/g,'^3').replace(/⁴/g,'^4').replace(/⁵/g,'^5').replace(/⁶/g,'^6')
-        .replace(/−/g,'-').replace(/[·*\s]/g,'');
-  s=s.replace(/\+c$/,'').replace(/-c$/,'').replace(/^c$/,'');
-  if(s==='')return {};
-  s=s.replace(/-/g,'+-');
-  const map={}; let any=false;
-  for(const t of s.split('+')){
-    if(t==='')continue;
-    let coef,exp; const xi=t.indexOf('x');
-    if(xi>=0){let cs=t.slice(0,xi);
-      coef=(cs===''||cs==='+')?1:(cs==='-'?-1:parseInt(cs,10));
-      const rest=t.slice(xi+1); exp=rest.startsWith('^')?parseInt(rest.slice(1),10):1;
-    }else{coef=parseInt(t,10);exp=0;}
-    if(isNaN(coef)||isNaN(exp))return null;
-    map[exp]=(map[exp]||0)+coef; any=true;
+/* Every entry is a self-contained SAMPLE TEST generator. make(r) returns
+   { q, ans, bad? }.  q is the printed prompt; ans is the answer key (never
+   printed on the blank sheet); bad is an optional wrong answer used to
+   simulate a student's mistake (falls back to numeric wrongify).  The
+   grader is pure string equality (String(ocr)===String(expected)), so any
+   subject — arithmetic or language — grades with no engine changes. */
+const _pk=(r,a)=>a[Math.floor(r()*a.length)];
+const _gcd=(a,b)=>{a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b];}return a||1;};
+/* monomial → string with unicode superscripts (calculus answer keys) */
+const _sup={0:'',1:'',2:'²',3:'³',4:'⁴',5:'⁵'};
+function _mono(a,n){ if(a===0)return '0'; if(n===0)return String(a);
+  const coef=(a===1?'':(a===-1?'-':String(a))); const xp=(n===1?'x':'x'+(_sup[n]||('^'+n))); return coef+xp; }
+
+/* short word banks (kept ≤7 letters so prompts fit the 2-column sheet) */
+const BANK={
+  plural:[['fox','foxes'],['baby','babies'],['leaf','leaves'],['city','cities'],['boy','boys'],['knife','knives'],['bus','buses'],['wolf','wolves'],['dish','dishes'],['man','men'],['foot','feet'],['tooth','teeth'],['mouse','mice'],['goose','geese'],['toy','toys']],
+  past:[['run','ran'],['go','went'],['eat','ate'],['see','saw'],['make','made'],['swim','swam'],['bring','brought'],['buy','bought'],['catch','caught'],['sing','sang'],['fall','fell'],['keep','kept'],['sleep','slept'],['teach','taught'],['fly','flew']],
+  opp:[['hot','cold'],['up','down'],['big','small'],['fast','slow'],['open','shut'],['day','night'],['wet','dry'],['high','low'],['near','far'],['soft','hard'],['light','dark'],['full','empty'],['happy','sad'],['rich','poor'],['old','new']],
+  syn:[['big','large'],['happy','glad'],['fast','quick'],['smart','clever'],['tiny','small'],['angry','mad'],['begin','start'],['end','finish'],['jump','leap'],['shut','close'],['neat','tidy'],['brave','bold'],['quiet','calm'],['reply','answer'],['sick','ill']],
+  contr:[['cannot',"can't"],['do not',"don't"],['I am',"I'm"],['we are',"we're"],['it is',"it's"],['did not',"didn't"],['you are',"you're"],['will not',"won't"],['is not',"isn't"],['they are',"they're"],['has not',"hasn't"],['let us',"let's"],['he is',"he's"],['should not',"shouldn't"],['would not',"wouldn't"]],
+  sci:[['H₂O is','water'],['CO₂ is','carbon dioxide'],['O₂ is','oxygen'],['the Sun is a','star'],['Earth orbits the','Sun'],['the Moon orbits the','Earth'],['gas → liquid','condensation'],['liquid → gas','evaporation'],['solid → liquid','melting'],['plants make food by','photosynthesis'],['we breathe in','oxygen'],['we breathe out','carbon dioxide'],['closest planet to Sun','Mercury'],['largest planet','Jupiter'],['the red planet','Mars']],
+  chem:[['oxygen','O'],['hydrogen','H'],['carbon','C'],['gold','Au'],['iron','Fe'],['sodium','Na'],['helium','He'],['nitrogen','N'],['calcium','Ca'],['potassium','K']],
+  unit:[['force','newton'],['energy','joule'],['power','watt'],['length','metre'],['mass','kilogram'],['time','second'],['temperature','kelvin'],['current','ampere']]
+};
+
+const LEVELS={
+  /* ---- arithmetic (original three, unchanged) ---- */
+  B:{name:'Addition',make(r){const a=10+Math.floor(r()*80),b=10+Math.floor(r()*80);return{q:a+' + '+b+' =',ans:a+b};}},
+  C:{name:'Multiplication',make(r){const a=12+Math.floor(r()*80),b=2+Math.floor(r()*8);return{q:a+' × '+b+' =',ans:a*b};}},
+  D:{name:'Division',make(r){const b=2+Math.floor(r()*8),q=11+Math.floor(r()*80);return{q:(b*q)+' ÷ '+b+' =',ans:q};}},
+  /* ---- more math subjects ---- */
+  SUB:{name:'Subtraction',make(r){let a=30+Math.floor(r()*70),b=5+Math.floor(r()*40);if(b>a){const t=a;a=b;b=t;}return{q:a+' − '+b+' =',ans:a-b};}},
+  DEC:{name:'Decimals',make(r){const a=(10+Math.floor(r()*90))/10,b=(10+Math.floor(r()*90))/10;const s=Math.round((a+b)*10)/10;return{q:a.toFixed(1)+' + '+b.toFixed(1)+' =',ans:s.toFixed(1)};}},
+  FRAC:{name:'Fractions',make(r){const d=3+Math.floor(r()*6);let a=1+Math.floor(r()*(d-1)),b=1+Math.floor(r()*(d-1));let n=a+b,dn=d;const g=_gcd(n,dn);n/=g;dn/=g;const ans=dn===1?String(n):n+'/'+dn;return{q:a+'/'+d+' + '+b+'/'+d+' =',ans,bad:(n+1)+'/'+dn};}},
+  OOO:{name:'Order of operations',make(r){const a=2+Math.floor(r()*9),b=2+Math.floor(r()*8),c=2+Math.floor(r()*8);return{q:a+' + '+b+' × '+c+' =',ans:a+b*c,bad:(a+b)*c};}},
+  NEG:{name:'Negative numbers',make(r){const a=2+Math.floor(r()*9),b=a+1+Math.floor(r()*9);return{q:a+' − '+b+' =',ans:a-b};}},
+  EXP:{name:'Exponents',make(r){const n=2+Math.floor(r()*11),p=r()<.5?2:3;return{q:n+(p===2?'²':'³')+' =',ans:Math.pow(n,p)};}},
+  SQRT:{name:'Square roots',make(r){const k=2+Math.floor(r()*18);return{q:'√'+(k*k)+' =',ans:k};}},
+  PCT:{name:'Percent',make(r){const p=_pk(r,[10,20,25,50]),n=p===25?4*(1+Math.floor(r()*24)):10*(1+Math.floor(r()*20));return{q:p+'% of '+n+' =',ans:Math.round(p/100*n)};}},
+  EQ:{name:'Solve for x',make(r){const x=1+Math.floor(r()*11),a=2+Math.floor(r()*5),b=1+Math.floor(r()*9);return{q:a+'x + '+b+' = '+(a*x+b)+'   x =',ans:x,bad:x+1};}},
+  /* ---- English / reading (stem prompt; the sheet subject names the task) ---- */
+  ENGP:{name:'Plurals',make(r){const[s,p]=_pk(r,BANK.plural);return{q:s+' →',ans:p,bad:s+'s'};}},
+  ENGT:{name:'Past tense',make(r){const[s,p]=_pk(r,BANK.past);return{q:s+' →',ans:p,bad:s+'ed'};}},
+  ENGO:{name:'Opposites',make(r){const p=_pk(r,BANK.opp),fwd=r()<.5;return{q:(fwd?p[0]:p[1])+' →',ans:fwd?p[1]:p[0],bad:fwd?p[0]:p[1]};}},
+  ENGS:{name:'Synonyms',make(r){const[w,s]=_pk(r,BANK.syn);return{q:w+' →',ans:s,bad:w};}},
+  ENGC:{name:'Contractions',make(r){const[ph,c]=_pk(r,BANK.contr);return{q:ph+' →',ans:c,bad:ph.replace(' ','')};}},
+  ENGA:{name:'Articles (a / an)',make(r){const words=['apple','egg','hour','cat','dog','umbrella','orange','house','idea','banana','onion','tree'];const w=_pk(r,words);const an=/^[aeiou]/i.test(w)||w==='hour';return{q:'__ '+w+' →',ans:an?'an':'a',bad:an?'a':'an'};}},
+  ENGML:{name:'Sentences: past tense',make(r){const[b,p]=_pk(r,BANK.past);return{q:'Change to past tense:\n"I '+b+' home." →',ans:'I '+p+' home',bad:'I '+b+'ed home'};}},
+  /* ---- combined / multi-step operations (single-line and multi-line) ---- */
+  MIX:{name:'Mixed operations',make(r){const b=2+Math.floor(r()*6),k=2+Math.floor(r()*6),c=1+Math.floor(r()*8),a=b*k;return{q:a+' ÷ '+b+' + '+c+' =',ans:k+c,bad:(k+c+1)};}},
+  CHAIN:{name:'Multi-step (multi-line)',make(r){const a=3+Math.floor(r()*9),b=2+Math.floor(r()*7),c=2+Math.floor(r()*5);return{q:a+' + '+b+' =\n(  ) × '+c+' =',ans:(a+b)*c,bad:(a+b)+c};}},
+  ADDML:{name:'Column addition (multi-line)',make(r){const a=20+Math.floor(r()*70),b=10+Math.floor(r()*80);return{q:'   '+a+'\n+ '+b+'\n=',ans:a+b,bad:a+b+10};}},
+  SUBML:{name:'Column subtraction (multi-line)',make(r){const b=10+Math.floor(r()*40),a=b+5+Math.floor(r()*60);return{q:'   '+a+'\n− '+b+'\n=',ans:a-b,bad:a-b-1};}},
+  OPSML:{name:'Two-step: × then +',make(r){const a=2+Math.floor(r()*8),b=2+Math.floor(r()*8),c=1+Math.floor(r()*9);return{q:a+' × '+b+' =\n(  ) + '+c+' =',ans:a*b+c,bad:a*b+c+1};}},
+  OPSML2:{name:'Two-step: − then ×',make(r){const b=2+Math.floor(r()*8),c=2+Math.floor(r()*6),a=b+2+Math.floor(r()*20);return{q:a+' − '+b+' =\n(  ) × '+c+' =',ans:(a-b)*c,bad:(a-b)*c+c};}},
+  OPS3ML:{name:'Three-step (multi-line)',make(r){const a=4+Math.floor(r()*10),b=2+Math.floor(r()*7),c=2+Math.floor(r()*6),d=1+Math.floor(r()*6);return{q:a+' + '+b+' =\n(  ) × '+c+' =\n(  ) − '+d+' =',ans:(a+b)*c-d,bad:(a+b)*c+d};}},
+  /* ---- calculus: derivatives & integrals, single-line and multi-line ---- */
+  DERV:{name:'Derivatives',make(r){const n=2+Math.floor(r()*2),a=1+Math.floor(r()*5);return{q:'d/dx( '+_mono(a,n)+' ) =',ans:_mono(a*n,n-1),bad:_mono(a,n)};}},
+  INTG:{name:'Integrals',make(r){const n=1+Math.floor(r()*2),k=1+Math.floor(r()*4),a=k*(n+1);return{q:'∫ '+_mono(a,n)+' dx =',ans:_mono(k,n+1)+' + C',bad:_mono(k,n+1)};}},
+  DERVML:{name:'Derivatives (multi-line)',make(r){const a=1+Math.floor(r()*4),b=1+Math.floor(r()*5),n=2+Math.floor(r()*2);return{q:'f(x) = '+_mono(a,n)+' + '+_mono(b,1)+"\nf '(x) =",ans:_mono(a*n,n-1)+' + '+String(b),bad:_mono(a*n,n-1)};}},
+  INTGML:{name:'Integrals (multi-line)',make(r){const n=1+Math.floor(r()*2),k=1+Math.floor(r()*4),a=k*(n+1);return{q:'∫ ( '+_mono(a,n)+' ) dx\n=',ans:_mono(k,n+1)+' + C',bad:_mono(a,n)+' + C'};}},
+  /* ---- science ---- */
+  SCI:{name:'Science: facts',make(r){const[q,a]=_pk(r,BANK.sci);return{q:q+' →',ans:a,bad:(a.length>3?a.slice(0,-1):a+'?')};}},
+  SCICH:{name:'Science: symbols',make(r){const[el,sy]=_pk(r,BANK.chem);return{q:'symbol for '+el+' →',ans:sy,bad:(sy.toUpperCase()===sy?sy.toLowerCase():el[0].toUpperCase())};}},
+  SCIU:{name:'Science: SI units',make(r){const[q,a]=_pk(r,BANK.unit);return{q:'SI unit of '+q+' →',ans:a,bad:a.slice(0,-1)};}},
+  SCIML:{name:'Science: equations',make(r){const items=[['Force 10 N on 2 kg.','a = F ÷ m =','5'],['100 m in 20 s.','v = d ÷ t =','5'],['3 kg at 4 m/s².','F = m × a =','12'],['12 V, 3 A.','R = V ÷ I =','4'],['Work 20 J in 4 s.','P = W ÷ t =','5']];const it=_pk(r,items);return{q:it[0]+'\n'+it[1],ans:it[2],bad:String(+it[2]+1)};}}
+};
+
+/* subjects offered in the Sample-test picker (label order) */
+const SAMPLE_SUBJECTS=['B','SUB','C','D','DEC','FRAC','OOO','MIX','NEG','EXP','SQRT','PCT','EQ','CHAIN','ADDML','SUBML','OPSML','OPSML2','OPS3ML','DERV','INTG','DERVML','INTGML','ENGP','ENGT','ENGO','ENGS','ENGC','ENGA','ENGML','SCI','SCICH','SCIU','SCIML'];
+
+function wrongify(correct,r){
+  if(typeof correct!=='number'||!isFinite(correct)){
+    const s=String(correct);              // string answer: mutate deterministically
+    return s.length>2?s.slice(0,-1):s+'x';
   }
-  if(!any)return null;
-  Object.keys(map).forEach(k=>{if(map[k]===0)delete map[k];});
-  return map;
-}
-function polyEq(a,b){if(!a||!b)return false;const ka=Object.keys(a),kb=Object.keys(b);
-  if(ka.length!==kb.length)return false;return ka.every(k=>a[k]===b[k]);}
-function hstr(s){let h=1779033703^s.length;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19;}return h>>>0;}
-function wrongify(correct,r){                                // numeric fallback distractor
   const modes=[c=>c+1,c=>c-1,c=>c+10,c=>c-10,c=>{const s=String(c);return s.length>1?+((s[1]+s[0])+s.slice(2)):c+2;}];
   let w=correct;
   while(w===correct){w=modes[Math.floor(r()*modes.length)](correct);}
   return w;
 }
 
-/* ══════════════ worksheet TYPE registry ══════════════
-   Each type: name/level/blurb (header), cmp (grader), cols + perSide (layout),
-   and either make(r) → {q,ans,bad(r)?,dis?} or generate(r,count) → problems[].
-   `bad(r)` / `dis[]` produce a deterministic, plausibly-WRONG answer of the
-   same shape. Grades are always recomputed by gradeCmp from the answer key —
-   never trusted from the injected flag, never from OCR/model. */
-const ENG_BANK=[
-  {s:"The children ___ happily in the park yesterday.",a:"played",cat:"past tense",dis:["play","plays","playing"]},
-  {s:"She ___ to school every morning.",a:"walks",cat:"subject–verb",dis:["walk","walked","walking"]},
-  {s:"There are three ___ on the table.",a:"boxes",cat:"plural",dis:["box","boxs","boxies"]},
-  {s:"The opposite of 'ancient' is ___.",a:"modern",cat:"antonym",dis:["old","early","past"]},
-  {s:"He put the book ___ the shelf.",a:"on",cat:"preposition",dis:["in","at","of"]},
-  {s:"I saw ___ elephant at the zoo.",a:"an",cat:"article",dis:["a","the","some"]},
-  {s:"The mice ___ into the tiny hole.",a:"ran",cat:"past tense",dis:["run","runned","runs"]},
-  {s:"My two front ___ are loose.",a:"teeth",cat:"plural",dis:["tooths","tooth","teeths"]},
-  {s:"The opposite of 'generous' is ___.",a:"selfish",cat:"antonym",dis:["kind","giving","meanless"]},
-  {s:"We waited ___ the rain to stop.",a:"for",cat:"preposition",dis:["to","at","by"]},
-  {s:"Each of the students ___ a pencil.",a:"has",cat:"subject–verb",dis:["have","having","haves"]},
-  {s:"A group of wolves is called a ___.",a:"pack",cat:"vocabulary",dis:["herd","flock","school"]},
-  {s:"The opposite of 'expand' is ___.",a:"shrink",cat:"antonym",dis:["grow","widen","stretch"]},
-  {s:"She is taller ___ her brother.",a:"than",cat:"comparison",dis:["then","that","as"]},
-  {s:"The two ___ crossed the busy street.",a:"women",cat:"plural",dis:["womans","womens","woman"]},
-  {s:"The opposite of 'permanent' is ___.",a:"temporary",cat:"antonym",dis:["forever","lasting","fixed"]},
-  {s:"A baby dog is called a ___.",a:"puppy",cat:"vocabulary",dis:["cub","kitten","calf"]},
-  {s:"Neither the cat nor the dogs ___ hungry.",a:"are",cat:"subject–verb",dis:["is","was","be"]},
-  {s:"The opposite of 'victory' is ___.",a:"defeat",cat:"antonym",dis:["win","success","triumph"]},
-  {s:"They ___ building the bridge last year.",a:"began",cat:"past tense",dis:["begin","beginned","begun"]}
-];
-const SCI_BANK=[
-  {s:"Water freezes at ___ °C.",a:"0",cat:"physical",dis:["10","32","100"]},
-  {s:"Water boils at ___ °C.",a:"100",cat:"physical",dis:["0","50","212"]},
-  {s:"The chemical symbol for oxygen is ___.",a:"O",cat:"chemistry",dis:["Ox","O2","Og"]},
-  {s:"Plants make their own food by a process called ___.",a:"photosynthesis",cat:"life",dis:["respiration","digestion","germination"]},
-  {s:"The closest planet to the Sun is ___.",a:"Mercury",cat:"earth/space",dis:["Venus","Earth","Mars"]},
-  {s:"The force that pulls objects toward Earth is ___.",a:"gravity",cat:"physical",dis:["friction","magnetism","inertia"]},
-  {s:"Humans breathe in oxygen and breathe out ___.",a:"carbon dioxide",cat:"life",dis:["nitrogen","hydrogen","helium"]},
-  {s:"The part of the cell that releases energy is the ___.",a:"mitochondria",cat:"life",dis:["nucleus","ribosome","chloroplast"]},
-  {s:"Water is made of hydrogen and ___.",a:"oxygen",cat:"chemistry",dis:["carbon","nitrogen","helium"]},
-  {s:"A typical insect has ___ legs.",a:"6",cat:"life",dis:["4","8","10"]},
-  {s:"Sound cannot travel through a ___.",a:"vacuum",cat:"physical",dis:["solid","liquid","gas"]},
-  {s:"The Sun is a ___.",a:"star",cat:"earth/space",dis:["planet","moon","comet"]},
-  {s:"Ice is the ___ state of water.",a:"solid",cat:"physical",dis:["liquid","gas","plasma"]},
-  {s:"The organ that pumps blood around the body is the ___.",a:"heart",cat:"life",dis:["lung","liver","kidney"]},
-  {s:"The green pigment that captures sunlight in plants is ___.",a:"chlorophyll",cat:"life",dis:["hemoglobin","keratin","melanin"]},
-  {s:"A push or a pull is called a ___.",a:"force",cat:"physical",dis:["mass","speed","energy"]},
-  {s:"Animals that eat only plants are called ___.",a:"herbivores",cat:"life",dis:["carnivores","omnivores","predators"]},
-  {s:"The layer of gases surrounding the Earth is the ___.",a:"atmosphere",cat:"earth/space",dis:["hydrosphere","lithosphere","biosphere"]},
-  {s:"Matter that flows and takes the shape of its container is a ___.",a:"liquid",cat:"physical",dis:["solid","gas","crystal"]},
-  {s:"The process of water turning into vapor is called ___.",a:"evaporation",cat:"earth/space",dis:["condensation","precipitation","filtration"]}
-];
-const LEVELS={
-  /* ── original arithmetic sets (unchanged) ── */
-  B:{name:'Addition',level:'Level B',blurb:'2-digit addition',cmp:'int',cols:2,perSide:10,
-     make(r){const a=10+Math.floor(r()*80),b=10+Math.floor(r()*80);return{q:a+' + '+b+' =',ans:String(a+b)};}},
-  C:{name:'Multiplication',level:'Level C',blurb:'2-digit × 1-digit',cmp:'int',cols:2,perSide:10,
-     make(r){const a=12+Math.floor(r()*80),b=2+Math.floor(r()*8);return{q:a+' × '+b+' =',ans:String(a*b)};}},
-  D:{name:'Division',level:'Level D',blurb:'exact division',cmp:'int',cols:2,perSide:10,
-     make(r){const b=2+Math.floor(r()*8),q=11+Math.floor(r()*80);return{q:(b*q)+' ÷ '+b+' =',ans:String(q)};}},
-
-  /* ── complex sets (from the test-case kit) ── */
-  MUL2:{name:'Multiplication (2-digit)',level:'Level C',blurb:'2-digit × 1–2 digit',cmp:'int',cols:2,perSide:10,
-    make(r){const twoByTwo=r()<0.45;const a=ri(r,twoByTwo?12:13,twoByTwo?49:99);const b=twoByTwo?ri(r,11,29):ri(r,3,9);const prod=a*b;
-      return{q:a+' × '+b+' =',ans:String(prod),cmp:'int',
-        bad:(rr)=>{const d=pick(rr,[-3,-2,-1,1,2,3,10,-10]);let w=prod+d;if(w<=0)w=prod+Math.abs(d)+prod;return String(w);}};}},
-  DVR:{name:'Division (remainder)',level:'Level D',blurb:'long division, remainder',cmp:'div',cols:1,perSide:8,
-    make(r){const dsor=ri(r,3,12),q=ri(r,6,29),rem=ri(r,0,dsor-1),dividend=dsor*q+rem;const canon=rem===0?String(q):q+' R '+rem;
-      return{q:dividend+' ÷ '+dsor+' =',ans:canon,cmp:'div',
-        bad:(rr)=>{let s;if(rr()<0.5){const qq=q+pick(rr,[-1,1,2]);s=(qq<0?0:qq)+(rem?' R '+rem:'');}else{const r2=(rem+ri(rr,1,dsor-1))%dsor;s=q+(r2?' R '+r2:'');}if(s===canon)s=String(q+1);return s;}};}},
-  FRC:{name:'Fractions',level:'Level E–F',blurb:'add unlike denominators, reduce',cmp:'frac',cols:1,perSide:8,
-    make(r){let d1=ri(r,2,9),d2=ri(r,2,9);if(d2===d1)d2=(d2%9)+2;const n1=ri(r,1,d1-1),n2=ri(r,1,d2-1);
-      let sn=n1*d2+n2*d1,sd=d1*d2;const[rn,rd]=reduce(sn,sd);const canon=rd===1?String(rn):rn+'/'+rd;
-      return{q:n1+'/'+d1+' + '+n2+'/'+d2+' =',ans:canon,cmp:'frac',
-        bad:(rr)=>{let bn=n1+n2,bd=d1+d2;const[xn,xd]=reduce(bn,bd);let s=xd===1?String(xn):xn+'/'+xd;if(fracEq(parseFrac(s),parseFrac(canon)))s=(rn+1)+'/'+(rd||1);return s;}};}},
-  OOO:{name:'Order of Operations',level:'Level F',blurb:'×÷ before +−, parentheses',cmp:'int',cols:1,perSide:8,
-    make(r){const form=ri(r,0,3);let prompt,val;const a=ri(r,2,12),b=ri(r,2,9),c=ri(r,2,9),d=ri(r,2,9);
-      if(form===0){val=a+b*c;prompt=a+' + '+b+' × '+c+' =';}
-      else if(form===1){const aa=Math.max(a,b*c-1)+(b*c);val=aa-b*c;prompt=aa+' − '+b+' × '+c+' =';}
-      else if(form===2){val=(a+b)*c;prompt='( '+a+' + '+b+' ) × '+c+' =';}
-      else{val=a*b+c*d;prompt=a+' × '+b+' + '+c+' × '+d+' =';}
-      return{q:prompt,ans:String(val),cmp:'int',
-        bad:(rr)=>{let lr;if(form===0)lr=(a+b)*c;else if(form===1)lr=null;else if(form===2)lr=a+b*c;else lr=((a*b)+c)*d;let w=(lr!=null&&lr!==val)?lr:val+pick(rr,[-2,-1,1,2,3]);return String(w);}};}},
-  EQN:{name:'Linear Equations',level:'Level H',blurb:'solve ax+b = cx+d for x',cmp:'int',cols:1,perSide:8,
-    make(r){const x=ri(r,-6,12);let a=ri(r,2,9),c=ri(r,1,8);if(c>=a)c=ri(r,1,a-1);if(c<1)c=1;const b=ri(r,-9,12);const d=(a-c)*x+b;
-      const sgn=v=>v<0?'− '+Math.abs(v):'+ '+v;
-      return{q:a+'x '+sgn(b)+' = '+c+'x '+sgn(d)+'   x =',ans:String(x),cmp:'int',
-        bad:(rr)=>{let w=x+pick(rr,[-2,-1,1,2]);if(w===x)w=x+3;if(rr()<0.3)w=-x;if(w===x)w=x+1;return String(w);}};}},
-  ENG:{name:'English',level:'Reading',blurb:'grammar, plurals, antonyms, prepositions',cmp:'text',cols:1,perSide:6,slot:true,
-    generate(r,count){const idx=ENG_BANK.map((_,i)=>i);for(let i=idx.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
-      const out=[];for(let i=0;i<count;i++){const it=ENG_BANK[idx[i%idx.length]];out.push({q:it.s,ans:it.a,cmp:'text',cat:it.cat,dis:it.dis});}return out;}},
-  SCI:{name:'Science',level:'Elementary',blurb:'life, earth & physical science — fill in the blank',cmp:'text',cols:1,perSide:6,slot:true,
-    generate(r,count){const idx=SCI_BANK.map((_,i)=>i);for(let i=idx.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
-      const out=[];for(let i=0;i<count;i++){const it=SCI_BANK[idx[i%idx.length]];out.push({q:it.s,ans:it.a,cmp:'text',cat:it.cat,dis:it.dis});}return out;}},
-
-  /* ── calculus (multi-line: expression on top, worked answer on the line below) ── */
-  DRV:{name:'Derivatives',level:'Calculus',blurb:'differentiate d/dx of a polynomial',cmp:'poly',cols:1,perSide:5,calc:true,
-    make(r){
-      const pool=[4,3,2,1]; const p2=pool.slice(); const chosen=[]; const nT=ri(r,2,3);
-      for(let i=0;i<nT;i++)chosen.push(p2.splice(ri(r,0,p2.length-1),1)[0]);
-      chosen.sort((a,b)=>b-a);
-      const F={}, d={};
-      chosen.forEach(e=>{F[e]=pick(r,[-9,-8,-7,-6,-5,-4,-3,-2,2,3,4,5,6,7,8,9]);});
-      if(r()<0.5)F[0]=pick(r,[-9,-7,-5,-3,3,5,7,9]);              // constant vanishes on d/dx
-      Object.keys(F).forEach(k=>{const e=+k;if(e>0)d[e-1]=F[e]*e;});
-      const ans=polyStr(d);
-      return{q:'d/dx ( '+polyStr(F)+' )  =',ans,cmp:'poly',
-        bad:(rr)=>{const keys=Object.keys(d).map(Number); const w={...d}; const mode=ri(rr,0,2);
-          if(mode===0){const e=pick(rr,keys); w[e]=F[e+1]; if(w[e]===d[e])w[e]=d[e]+pick(rr,[-1,1,2]);}     // forgot ×exponent
-          else if(mode===1){const e=pick(rr,keys); delete w[e]; if(!Object.keys(w).length)w[keys[0]]=d[keys[0]]+1;} // dropped a term
-          else{const e=pick(rr,keys); w[e]=-w[e]; if(w[e]===d[e])w[e]=d[e]+2;}                                // sign slip
-          let s=polyStr(w); if(polyEq(parsePoly(s),parsePoly(ans)))s=polyStr({...w,[keys[0]]:(d[keys[0]]||0)+3});
-          return s;}};
-    }},
-  INT:{name:'Integrals',level:'Calculus',blurb:'integrate ∫ p(x) dx  (indefinite, + C)',cmp:'poly',cols:1,perSide:5,calc:true,
-    make(r){
-      const pool=[3,2,1,0]; const p2=pool.slice(); const chosen=[]; const nT=ri(r,2,3);
-      for(let i=0;i<nT;i++)chosen.push(p2.splice(ri(r,0,p2.length-1),1)[0]);
-      chosen.sort((a,b)=>b-a);
-      const f={}, F={};
-      chosen.forEach(e=>{const k=pick(r,[-4,-3,-2,-1,1,2,3,4]); f[e]=k*(e+1); F[e+1]=k;}); // integer antiderivative
-      const ans=polyStr(F)+' + C';
-      return{q:'∫ ( '+polyStr(f)+' ) dx  =',ans,cmp:'poly',
-        bad:(rr)=>{const keys=Object.keys(F).map(Number); const w={...F}; const mode=ri(rr,0,2);
-          if(mode===0){const e=pick(rr,keys); w[e]=f[e-1]; if(w[e]===F[e])w[e]=F[e]+pick(rr,[-1,1,2]);}       // forgot ÷(new exp)
-          else if(mode===1){const e=pick(rr,keys); const c=w[e]; delete w[e]; w[e-1]=(w[e-1]||0)+c; if((w[e-1])===0)w[e-1]=c+1;} // forgot to raise exponent
-          else{const e=pick(rr,keys); w[e]=w[e]+pick(rr,[-2,-1,1,2,3]); if(w[e]===F[e])w[e]=F[e]+3;}          // wrong coefficient
-          let s=polyStr(w)+' + C'; if(polyEq(parsePoly(s),parsePoly(ans)))s=polyStr({...w,[keys[0]]:(F[keys[0]]||0)+3})+' + C';
-          return s;}};
-    }}
-};
-
-function buildSyntheticSheet(studentId,level,setCode,seed,examDate,resub,skillOverride){
-  const T=LEVELS[level]||LEVELS.B;
-  const per=T.perSide||10;
+function buildSyntheticSheet(studentId,level,setCode,seed,examDate,resub,faded){
   const r=mulberry32(seed);
-  const defSkill=resub?(0.60+r()*0.15):(0.80+r()*0.17); // resubs had a rougher first pass
-  // always consume the RNG draw above so gen/reload streams match; override only the VALUE
-  const skill=(typeof skillOverride==='number')?skillOverride:defSkill;
+  const skill=resub?(0.60+r()*0.15):(0.80+r()*0.17); // resubs had a rougher first pass
   const sides=[0,1].map(si=>{
-    const gen = T.generate ? T.generate(r,per) : Array.from({length:per},()=>T.make(r));
-    const problems=gen.map((p,i)=>{
-      const cmp=p.cmp||T.cmp||'int';
-      const rightStr=String(p.ans);
-      const wrongStr = p.bad ? p.bad(r) : (p.dis? pick(r,p.dis) : String(wrongify(+p.ans,r)));
-      const isWrong=r()>skill;
-      const base={n:si*per+i+1,q:p.q,expected:rightStr,cmp,cat:p.cat||null,ocr:null,conf:null,correct:null};
+    const problems=[];
+    for(let i=0;i<10;i++){
+      const p=LEVELS[level].make(r);
+      const mkWrong=()=>{let w=(p.bad!==undefined)?p.bad:wrongify(p.ans,r);if(String(w)===String(p.ans))w=wrongify(p.ans,r);return w;};
+      const priorWrong=r()>skill;   // was this item wrong on the FIRST pass?
       if(resub){
-        // PRE-GRADED sheet: it came back already marked from a prior pass. Every
-        // problem keeps its prior mark — a green ✓ (was right) or red ✗ (was wrong).
-        // The wrong ones now carry the student's corrected answer (to be ◯-circled green).
-        if(isWrong) return{...base,written:rightStr,prevWritten:wrongStr,prevMark:'x',wasWrong:true};
-        return{...base,written:rightStr,prevMark:'ok'};
+        // Resubmission: the scan already carries the prior grading pass (faded ✓/✗).
+        // Every item shows its prior mark; items wrong the first time now carry the
+        // student's corrected answer (old wrong struck through) — regrading circles
+        // each correction in green. No correct answer is ever printed.
+        const prob={n:si*10+i+1,q:p.q,expected:p.ans,written:p.ans,ocr:null,conf:null,correct:null,priorMark:true,priorWrong};
+        if(priorWrong){ prob.wasWrong=true; prob.prevWritten=mkWrong(); }
+        problems.push(prob);
+      }else{
+        // Fresh: a natural mix of right and wrong; ✓/✗ only, no prior marks.
+        const written=priorWrong?mkWrong():p.ans;
+        problems.push({n:si*10+i+1,q:p.q,expected:p.ans,written,ocr:null,conf:null,correct:null});
       }
-      return{...base,written:isWrong?wrongStr:rightStr};
-    });
+    }
     return{problems};
   });
-  return{id:'WS-'+String(state.nextId++).padStart(4,'0'),studentId,level,setCode,seed,examDate,resub:!!resub,skillUsed:skill,
+  return{id:'WS-'+String(state.nextId++).padStart(4,'0'),studentId,level,setCode,seed,examDate,
+    resub:!!resub,faded:!!faded,
     source:'synthetic',sides,status:'queued',score:null,wrong:null,corrected:null,gradedAt:null};
 }
 
 async function loadSyntheticBatch(){
-  const kind=($('#tType')&&$('#tType').value)||'MIX';
-  const skill=parseFloat(($('#tErr')&&$('#tErr').value)||'0.75');
-  const pre=!!($('#tPre')&&$('#tPre').checked);
-  if(state.sheets.some(s=>s.source==='synthetic') && !(await appConfirm('Add more sample sheets?','A sample batch is already loaded. Add another set of sample sheets?','Add more'))) return;
+  if(state.sheets.some(s=>s.source==='synthetic') && !(await appConfirm('Add another sample batch?','A sample batch is already loaded. Add 8 more sample sheets?','Add 8 more'))) return;
   const today=new Date();
   const students=['STU-001','STU-002','STU-003'];
-
-  if(kind==='MIX'){
-    // original mixed sample: B/C/D across 3 students + 2 corrected resubmissions
-    const plans=[['B','B 141 a'],['B','B 142 a'],['C','C 87 a'],['C','C 88 a'],['D','D 21 a'],['D','D 22 a']];
-    let k=0;
-    students.forEach((stu,si)=>{ for(let j=0;j<2;j++){
+  const plans=[['B','B 141 a'],['B','B 142 a'],['C','C 87 a'],['C','C 88 a'],['D','D 21 a'],['D','D 22 a']];
+  let k=0;
+  students.forEach((stu,si)=>{
+    for(let j=0;j<2;j++){
       const d=new Date(today); d.setDate(d.getDate()-(12-(k*2)));
       const [lvl,code]=plans[si*2+j];
-      state.sheets.push(buildSyntheticSheet(stu,lvl,code,90210+si*97+j*13,d.toISOString().slice(0,10),false,skill)); k++;
-    }});
-    const d2=new Date(today); d2.setDate(d2.getDate()-2);
-    state.sheets.push(buildSyntheticSheet('STU-001','B','B 140 a · resub',77001,d2.toISOString().slice(0,10),true,skill));
-    state.sheets.push(buildSyntheticSheet('STU-003','D','D 20 a · resub',77003,d2.toISOString().slice(0,10),true,skill));
-    finishBatch('8 sample sheets (levels B/C/D · 2 corrected resubmissions)');
-    return;
-  }
+      state.sheets.push(buildSyntheticSheet(stu,lvl,code,90210+si*97+j*13,d.toISOString().slice(0,10)));
+      k++;
+    }
+  });
+  // resubmissions: sheets already graded once (prior ✓/✗ visible) with the
+  // previously-wrong answers corrected — grading circles each correction green.
+  const d2=new Date(today); d2.setDate(d2.getDate()-2);
+  state.sheets.push(buildSyntheticSheet('STU-001','B','B 140 a · resub',77001,d2.toISOString().slice(0,10),true));
+  state.sheets.push(buildSyntheticSheet('STU-003','D','D 20 a · resub',77003,d2.toISOString().slice(0,10),true));
+  state.sheets.push(buildSyntheticSheet('STU-002','C','C 86 a · resub',77002,d2.toISOString().slice(0,10),true));
+  state.__ingesting=true;
+  setIntakeGuide('queue','run','Generating 9 sample worksheets (levels B/C/D, duplex, incl. 3 resubmissions)…',true);
+  renderQueue(); saveState();
+  state.__ingesting=false;
+  setIntakeGuide('ready','ok','9 sample sheets queued (3 corrected resubmissions) — ready for step 2 · Grade.',false);
+  log('Loaded synthetic batch: 9 sheets · levels B/C/D · duplex. Fresh sheets get ✓/✗ only; the 3 resubmissions carry the prior grading pass and green-circle each correction. The correct answer is never printed.','ok');
+  showToast('Sample batch loaded — 9 sheets queued (3 resubmissions), ready for step 2 · Grade.');
+  pulseCount('#cQ');
+}
 
-  // single-type batch of the selected worksheet
-  const T=LEVELS[kind]; const N=4;
-  for(let j=0;j<N;j++){
-    const stu=students[j%students.length];
-    const d=new Date(today); d.setDate(d.getDate()-(8-j*2));
-    const isPre = pre && (j>=N-2);   // last two are pre-graded resubmissions
-    const code=kind+'-'+(101+j)+(isPre?' · pre-graded':'');
-    state.sheets.push(buildSyntheticSheet(stu,kind,code,hstr(kind+'|'+j)>>>0,d.toISOString().slice(0,10),isPre,skill));
-  }
-  finishBatch(N+' × '+T.name+' sheet(s) ('+T.level+(pre?' · 2 pre-graded resubmissions':'')+')');
-
-  function finishBatch(desc){
-    state.__ingesting=true;
-    setIntakeGuide('queue','run','Generating '+desc+'…',true);
-    renderQueue(); saveState();
-    state.__ingesting=false;
-    setIntakeGuide('ready','ok',desc+' queued — ready for step 2 · Grade.',false);
-    log('Loaded sample batch: '+desc+' · duplex (A+B) · deterministic type-aware grading (green ✓ correct · red ✗ wrong · green ◯ corrected).','ok');
-    showToast(desc+' queued — ready for step 2 · Grade.');
-    pulseCount('#cQ');
-  }
+/* Load SAMPLE TESTS for a chosen subject (or all subjects), so the new
+   sheet types can be tested end-to-end in the main app. */
+async function loadSampleTests(){
+  const sel=$('#sampleSubject'), per=Math.max(1,Math.min(6,parseInt($('#sampleCount').value||'1',10)));
+  const which=(!sel||sel.value==='ALL')?SAMPLE_SUBJECTS:[sel.value];
+  const single=(which.length===1);
+  const kindSel=($('#sampleKind')&&$('#sampleKind').value)||'mix';
+  const pencilSel=($('#samplePencil')&&$('#samplePencil').value)||'normal';
+  const today=new Date();
+  let made=0, nRe=0, nFade=0, seed=53000+Math.floor(Math.random()*1000);
+  // Grading mix: 'mix' alternates fresh ↔ resubmission so both marking paths are
+  // exercised; otherwise every sheet is the chosen kind. Fresh sheets get ✓/✗
+  // only; resubmissions carry the prior pass and green-circle each correction.
+  // The correct answer is never printed on any sheet.
+  // Pencil: 'faded' makes every sheet faint, 'mixed' fades alternating sheets.
+  const CYCLE=['fresh','resub'];
+  let idx=0;
+  which.forEach((lvl,li)=>{
+    for(let j=0;j<per;j++){
+      const kind=(kindSel==='mix')?CYCLE[(single?j:li)%2]:kindSel;
+      const resub=kind==='resub';
+      const faded=(pencilSel==='faded')||(pencilSel==='mixed'&&idx%2===1);
+      if(resub)nRe++; if(faded)nFade++;
+      const d=new Date(today); d.setDate(d.getDate()-((li*per+j)%14));
+      const tags=kind+(faded?' · faded':'');
+      const code=lvl+' · '+tags+' '+String(j+1).padStart(2,'0');
+      state.sheets.push(buildSyntheticSheet('STU-SMP'+String((li%9)+1).padStart(2,'0'),lvl,code,seed+li*131+j*17,d.toISOString().slice(0,10),resub,faded));
+      made++; idx++;
+    }
+  });
+  state.__ingesting=true;
+  const label=single?(LEVELS[which[0]]?LEVELS[which[0]].name:which[0]):'all subjects';
+  const bits=[]; if(nRe)bits.push(nRe+' resubmission'+(nRe>1?'s':'')); if(nFade)bits.push(nFade+' faded');
+  const mix=bits.length?(' · incl. '+bits.join(' + ')):'';
+  setIntakeGuide('queue','run','Generating '+made+' sample test sheet(s) — '+label+', duplex…',true);
+  renderQueue(); saveState();
+  state.__ingesting=false;
+  setIntakeGuide('ready','ok',made+' sample test sheet(s) queued ('+label+mix+') — ready for step 2 · Grade.',false);
+  log('Loaded sample tests: '+made+' sheet(s) · '+label+mix+' · duplex (A+B). Fresh sheets get ✓/✗ only; resubmissions carry the prior grading pass and green-circle each correction; the correct answer is never printed. Faded sheets simulate light pencil for the faint-recovery path.','ok');
+  showToast(made+' sample test sheet(s) queued ('+label+mix+') — run step 2 · Grade to mark them.');
+  pulseCount('#cQ');
 }
 
 /* ══════════════ canvas rendering (half-letter, 200dpi eq) ══════════════ */
@@ -878,9 +1341,15 @@ function renderSide(sheet,si,overlay){
   x.fillStyle='#1D2A35';
   x.font='800 92px Georgia,serif';
   x.fillText(sheet.setCode+(si?' · B':' · A'),70,140);
-  x.font='600 30px system-ui,sans-serif'; x.fillStyle='#5D6B77';
-  {const T=LEVELS[sheet.level]||LEVELS.B;
-   x.fillText(T.name+' · '+(T.level||'')+' — '+(T.blurb||'')+' (GradeFlow synthetic set, not Kumon material)',70,190);}
+  // SAMPLE TEST badge + subject subtitle
+  x.save();
+  x.font='700 26px system-ui,sans-serif';
+  const _badge='SAMPLE TEST', _bw=x.measureText(_badge).width+28;
+  x.fillStyle='#127A45'; x.fillRect(70,164,_bw,40);
+  x.fillStyle='#FFFFFF'; x.fillText(_badge,84,192);
+  x.font='600 28px system-ui,sans-serif'; x.fillStyle='#5D6B77';
+  x.fillText((LEVELS[sheet.level]?LEVELS[sheet.level].name:sheet.level)+' — GradeFlow sample set (not Kumon material)',70+_bw+16,192);
+  x.restore();
 
   // ID / date boxes
   x.strokeStyle='#B9C2CA'; x.lineWidth=2;
@@ -895,131 +1364,99 @@ function renderSide(sheet,si,overlay){
   x.beginPath(); x.arc(960,180,86,0,7); x.strokeStyle='#CBD3DA'; x.lineWidth=3; x.stroke();
   x.font='600 20px system-ui,sans-serif'; x.fillStyle='#AEB9C2'; x.fillText('SCORE',930,110);
 
-  // ── problem grid: layout driven by the worksheet TYPE. Short numeric sets use
-  //    two columns; wider sets (remainder division, fractions, order-of-ops,
-  //    equations) use one column so prompt + answer + marks never collide.
-  //    Fill-in-the-blank sets (English, Science) get a sentence + answer slot.
-  //    Every mark is positioned from the *measured* answer width. ──
-  const T=LEVELS[sheet.level]||LEVELS.B;
-  const slotLayout=!!T.slot;                    // sentence + "answer:" slot
-  const calcLayout=!!T.calc;                     // multi-line: expression then worked answer
-  const LXm=85, RXm=1040;                        // usable page margins
-  const probs=sheet.sides[si].problems;
-  const cols=(slotLayout||calcLayout)?1:(T.cols||2);
-  const rows=Math.ceil(probs.length/cols);
-  const colGap=40;
-  const colW=(RXm-LXm-(cols-1)*colGap)/cols;
-  const startY=430, availH=(H-90)-startY;
-  const rowH=availH/rows;
-  const isResub=!!sheet.resub;                    // sheet carries a previous grading pass
-  const GREEN='#1E9E5A', RED='#C9403A';
-
-  function promptFont(str,budget){                // serif size that fits the column
-    let fs=slotLayout?30:44; x.font=fs+'px Georgia,serif';
-    while(fs>24 && x.measureText(str).width>budget){fs-=2; x.font=fs+'px Georgia,serif';}
-    return fs;
-  }
-  function wrapText(str,maxW){                     // greedy word-wrap at the current font
-    const words=String(str).split(' '); const lines=[]; let line='';
-    for(const wd of words){ const t=line?line+' '+wd:wd;
-      if(x.measureText(t).width>maxW && line){lines.push(line); line=wd;} else line=t; }
-    if(line)lines.push(line); return lines.slice(0,3);
-  }
-  // consistent mark X: just right of the real answer, clamped inside the column
-  function markXfor(axStart,aw,cx){
-    let mx=axStart+Math.max(aw,120)+34;
-    mx=Math.min(mx, cx+colW-60);                  // stay inside the column
-    mx=Math.max(mx, axStart+aw+14);               // never sit on the answer
-    return mx;
-  }
-  function greenCheck(mx,cy,a){ x.save(); x.globalAlpha=a; x.strokeStyle=GREEN; x.lineWidth=7; x.lineCap='round'; x.lineJoin='round';
-    x.beginPath(); x.moveTo(mx,cy-4); x.lineTo(mx+18,cy+16); x.lineTo(mx+52,cy-40); x.stroke(); x.restore(); }
-  function redCross(mx,cy,a,jit){ x.save(); x.globalAlpha=a; x.strokeStyle=RED; x.lineWidth=7; x.lineCap='round';
-    const jx=jit?(r()-.5)*5:0, jy=jit?(r()-.5)*5:0;
-    x.beginPath(); x.moveTo(mx+jx,cy-34+jy); x.lineTo(mx+40,cy+14); x.moveTo(mx+40+jx,cy-34+jy); x.lineTo(mx,cy+14); x.stroke(); x.restore(); }
-  function greenCircle(axStart,cy,aw){ x.save(); x.strokeStyle=GREEN; x.lineWidth=7; x.lineCap='round';
-    const rx=Math.max(aw/2+16,32), ry=36; x.beginPath(); x.ellipse(axStart+aw/2, cy-16, rx, ry, (r()-.5)*.05, 0, 7); x.stroke(); x.restore(); }
-
-  // one consistent marking routine for every sheet & layout
-  function placeMarks(p, axStart, cy, aw, cx){
-    const mx=markXfor(axStart,aw,cx);
-    if(isResub){
-      // keep the PREVIOUS pass's marks: ✓ where first attempt was right, ✗ where wrong
-      if(p.wasWrong) redCross(mx,cy,0.85,false); else greenCheck(mx,cy,0.85);
-      // this pass circles each corrected (previously-wrong, now-right) answer in green
-      if(overlay && p.wasWrong && p.correct) greenCircle(axStart,cy,aw);
-    } else if(overlay && p.correct!==null){
-      // normal sheet: ✓ for right, ✗ for wrong — the correct value is NOT shown
-      if(p.correct) greenCheck(mx,cy,1); else redCross(mx,cy,1,true);
-    }
-  }
-
-  probs.forEach((p,i)=>{
-    const col=Math.floor(i/rows), row=i%rows;
-    const cx=LXm+col*(colW+colGap);
-    const cyTop=startY+row*rowH;
-
-    if(calcLayout){
-      // MULTI-LINE: the expression (wrapped if long) on top, the worked answer
-      // on its own line below — marks and struck prior answer stay clear of both.
-      const label=(p.n)+')  ';
-      let fs=40; x.font=fs+'px Georgia,serif';
-      while(fs>28 && x.measureText(label+p.q).width>colW-20){fs-=2; x.font=fs+'px Georgia,serif';}
-      const lines=wrapText(label+p.q, colW-20);
-      x.fillStyle='#1D2A35';
-      let ly=cyTop+46; lines.forEach(ln=>{ x.fillText(ln, cx, ly); ly+=fs+8; });
-      const ansY=ly+40;                         // gap keeps the struck prior answer off the prompt
-      x.fillStyle='#1D2A35'; x.font='40px Georgia,serif'; x.fillText('=', cx+30, ansY);
-      const axStart=cx+92;
-      x.strokeStyle='#C6CDD4'; x.lineWidth=2; x.beginPath(); x.moveTo(axStart,ansY+10); x.lineTo(axStart+520,ansY+10); x.stroke();
-      const aStr=String(p.written), aFs=aStr.length>12?34:(aStr.length>7?40:48);
-      x.save(); x.translate(axStart+12,ansY); x.rotate((r()-.5)*.04);
-      x.font=aFs+'px "Comic Sans MS",cursive'; x.fillStyle='#39415C'; x.fillText(aStr,0,0); x.restore();
-      x.font=aFs+'px "Comic Sans MS",cursive'; const aw=x.measureText(aStr).width;
-      if(isResub && p.wasWrong && p.prevWritten!=null){
-        x.save(); x.globalAlpha=0.5; x.font='26px "Comic Sans MS",cursive'; x.fillStyle='#6B7280';
-        x.translate(axStart+12,ansY-52); x.rotate((r()-.5)*.05); x.fillText(String(p.prevWritten),0,0);
-        const pw=x.measureText(String(p.prevWritten)).width;
-        x.strokeStyle='#6B7280'; x.lineWidth=3; x.beginPath(); x.moveTo(-4,-9); x.lineTo(pw+4,-13); x.stroke(); x.restore();
+  // problems: 2 cols × 5 rows
+  const colX=[85,590], startY=440, rowH=232;
+  sheet.sides[si].problems.forEach((p,i)=>{
+    const cx=colX[Math.floor(i/5)], cy=startY+(i%5)*rowH;
+    // prompt: supports multi-line (split on \n) with adaptive font sizing so
+    // wide calculus notation still fits the 2-column layout. The LAST line is
+    // drawn on the answer baseline (cy); earlier lines stack above it, so all
+    // downstream answer/underline/mark placement below keeps using cy.
+    const _lines=String(p.q).split('\n');
+    const _pref=(p.n)+')  ', _cont='      ', _fam='Georgia,serif', _last=_lines.length-1;
+    const _mw=(px,t)=>{ x.font=px+'px '+_fam; return x.measureText(t).width; };
+    let _fpx=_lines.length>1?40:46;
+    while(_fpx>24){
+      let ok=true;
+      for(let li=0;li<_lines.length;li++){
+        const t=(li===0?_pref:_cont)+_lines[li];
+        if(_mw(_fpx,t) > (li===_last?245:470)){ ok=false; break; }
       }
-      placeMarks(p, axStart+12, ansY, aw, cx);
-      return;
+      if(ok) break; _fpx-=2;
     }
-
-    if(slotLayout){
-      // fill-in-the-blank: prompt on line 1, answer slot on line 2
-      const cy=cyTop+34, label=(p.n)+')  ';
-      x.fillStyle='#1D2A35'; promptFont(label+p.q,colW-40); x.fillText(label+p.q, cx, cy);
-      const ansY=cy+58, ansX=cx+52;
-      x.fillStyle='#8A97A2'; x.font='24px system-ui,sans-serif'; x.fillText('answer:', cx+18, ansY);
-      x.strokeStyle='#C6CDD4'; x.lineWidth=2; x.beginPath(); x.moveTo(ansX+118,ansY+8); x.lineTo(ansX+118+300,ansY+8); x.stroke();
-      const aFs=42, axStart=ansX+130;
-      x.save(); x.translate(axStart,ansY-2); x.rotate((r()-.5)*.05);
-      x.font=aFs+'px "Comic Sans MS",cursive'; x.fillStyle='#39415C'; x.fillText(String(p.written),0,0); x.restore();
-      x.font=aFs+'px "Comic Sans MS",cursive';
-      placeMarks(p, axStart, ansY, x.measureText(String(p.written)).width, cx);
-      return;
-    }
-
-    // math layout: prompt · underline · handwritten answer · marks to the right
-    const cy=cyTop+(rowH>200?60:44), label=(p.n)+')  ';
-    x.fillStyle='#1D2A35'; promptFont(label+p.q, colW*0.60);
-    const qw=x.measureText(label+p.q).width; x.fillText(label+p.q, cx, cy);
+    const _lh=Math.round(_fpx*1.18);
+    x.fillStyle='#1D2A35'; x.font=_fpx+'px '+_fam;
+    _lines.forEach((ln,li)=>{ x.fillText((li===0?_pref:_cont)+ln, cx, cy-(_last-li)*_lh); });
+    // answer underline (anchored after the last prompt line)
+    const qw=_mw(_fpx,(_last===0?_pref:_cont)+_lines[_last]);
     const ax=cx+qw+18;
-    x.strokeStyle='#C6CDD4'; x.lineWidth=2; x.beginPath(); x.moveTo(ax,cy+8); x.lineTo(ax+150,cy+8); x.stroke();
-    const aStr=String(p.written), aFs=aStr.length>4?(aStr.length>8?38:46):56, axStart=ax+16;
-    x.save(); x.translate(axStart,cy-2); x.rotate((r()-.5)*.08);
-    x.font=aFs+'px "Comic Sans MS",cursive'; x.fillStyle='#39415C'; x.fillText(aStr,0,0); x.restore();
-    x.font=aFs+'px "Comic Sans MS",cursive'; const aw=x.measureText(aStr).width;
-
-    // on a pre-graded resubmission the old wrong answer is shown struck-through above
-    if(isResub && p.wasWrong && p.prevWritten!=null){
-      x.save(); x.globalAlpha=0.5; x.font='26px "Comic Sans MS",cursive'; x.fillStyle='#6B7280';
-      x.translate(axStart,cy-56); x.rotate((r()-.5)*.05); x.fillText(String(p.prevWritten),0,0);
-      const pw=x.measureText(String(p.prevWritten)).width;
-      x.strokeStyle='#6B7280'; x.lineWidth=3; x.beginPath(); x.moveTo(-4,-9); x.lineTo(pw+4,-13); x.stroke(); x.restore();
+    x.strokeStyle='#C6CDD4'; x.lineWidth=2;
+    x.beginPath(); x.moveTo(ax,cy+8); x.lineTo(ax+150,cy+8); x.stroke();
+    // handwritten answer — faded pencil sheets draw it faint & light-grey to
+    // exercise the CLAHE/Sauvola faint-recovery path before OCR.
+    x.save(); x.translate(ax+18,cy-2); x.rotate((r()-.5)*.09);
+    x.font='58px "Comic Sans MS",cursive';
+    if(sheet.faded){ x.globalAlpha=0.34; x.fillStyle='#7C8792'; } else { x.fillStyle='#39415C'; }
+    x.fillText(String(p.written),0,0); x.restore();
+    p._ax=ax; p._ay=cy; // remember for overlay
+    // Resubmission: the earlier grading pass is baked into the scan — a faded ✓
+    // for items right the first time, a faded ✗ for items wrong the first time.
+    // Previously-wrong items also show the struck-out old answer; the student has
+    // written the corrected answer on the line (circled green when regraded).
+    if(p.priorMark){
+      x.save(); x.lineWidth=6; x.lineCap='round';
+      if(p.priorWrong){
+        x.globalAlpha=0.5; x.strokeStyle='#C9403A';
+        x.beginPath();
+        x.moveTo(ax+158,cy-46); x.lineTo(ax+212,cy+12);
+        x.moveTo(ax+212,cy-46); x.lineTo(ax+158,cy+12);
+        x.stroke();
+        // old wrong answer, small, pencil-struck
+        x.globalAlpha=0.55; x.font='34px "Comic Sans MS",cursive'; x.fillStyle='#6B7280';
+        const _pwY=(_lines.length>1)?cy+52:cy-62;  // below the answer line for multi-line prompts
+        x.save(); x.translate(ax+22,_pwY); x.rotate((r()-.5)*.08); x.fillText(String(p.prevWritten),0,0);
+        const pw=x.measureText(String(p.prevWritten)).width;
+        x.strokeStyle='#6B7280'; x.lineWidth=3; x.beginPath(); x.moveTo(-4,-10); x.lineTo(pw+4,-14); x.stroke();
+        x.restore();
+      }else{
+        x.globalAlpha=0.5; x.strokeStyle='#1E9E5A';
+        x.beginPath(); x.moveTo(ax+155,cy-8); x.lineTo(ax+175,cy+14); x.lineTo(ax+215,cy-44); x.stroke();
+      }
+      x.restore();
     }
-    placeMarks(p, axStart, cy, aw, cx);
+    // overlay marks — EVERY graded item gets a mark: green ✓ for correct,
+    // red ✗ for wrong. The correct answer is NEVER printed on any sheet.
+    if(overlay && p.correct!==null){
+      x.lineWidth=7; x.lineCap='round';
+      if(p.correct){
+        const corrected = p.wasWrong && sheet.resub;
+        // green circle around the student's answer — ONLY on a resubmission,
+        // marking an answer that was wrong before and is now
+        // right. It circles what the student wrote; it never reveals the key.
+        let checkX=ax+155;
+        if(corrected){
+          x.save();
+          x.font='58px "Comic Sans MS",cursive';
+          const aw=x.measureText(String(p.written)).width;
+          const rx=Math.max(38, aw/2+18), ry=34;
+          x.strokeStyle='#1E9E5A';
+          x.beginPath(); x.ellipse(ax+18+aw/2,cy-16,rx,ry,(r()-.5)*.08,0,7); x.stroke();
+          x.restore();
+          checkX=Math.max(ax+155, ax+18+aw+40); // keep the ✓ clear of the circle
+        }
+        // green ✓ for every correct item (fresh or corrected)
+        x.strokeStyle='#1E9E5A';
+        x.beginPath(); x.moveTo(checkX,cy-8); x.lineTo(checkX+20,cy+14); x.lineTo(checkX+60,cy-44); x.stroke();
+      }else{
+        // red ✗ for every wrong item — the correct answer is never shown
+        x.strokeStyle='#C9403A'; x.fillStyle='#C9403A';
+        const jx=(r()-.5)*6, jy=(r()-.5)*6; // slight hand-drawn jitter
+        x.beginPath();
+        x.moveTo(ax+158+jx,cy-46+jy); x.lineTo(ax+212,cy+12);
+        x.moveTo(ax+212+jx,cy-46+jy); x.lineTo(ax+158,cy+12);
+        x.stroke();
+      }
+    }
   });
 
   // overlay stamp + evidence line
@@ -1121,7 +1558,7 @@ async function buildOverlays(sheet){
   for(let si=0;si<sheet.sides.length;si++){
     const sd=sheet.sides[si]; if(!sd||!sd.imageUrl)continue;
     try{
-      const img=await loadImg(sd.imageUrl);
+      const img=await loadImg(sd.procUrl||sd.imageUrl);
       const c=drawScanOverlay(img,img.naturalWidth||img.width,img.naturalHeight||img.height,sheet,si);
       OVL[ovlKey(sheet.id,si)]={url:c.toDataURL('image/jpeg',0.9),w:c.width,h:c.height};
     }catch(e){ /* leave the raw scan if compositing fails */ }
@@ -1208,7 +1645,11 @@ function pulseCount(id){ const el=$(id); if(!el)return; el.classList.remove('pul
 function statusChips(s){
   const ar=s.archived?' <span class="chip q" title="Archived — restore from the Archive tab to keep working with this sheet">🗄 ARCHIVED</span>':'';
   if(s.status==='graded') return `<span class="chip g">GRADED</span> <span class="chip g score">${s.score} / 100</span>`+ar;
-  if(s.status==='review') return `<span class="chip r" title="OCR was not available for this uploaded scan — enable the local model in step 2 and re-run, or grade by hand">NEEDS REVIEW</span>`+ar;
+  if(s.status==='review'){
+    if(s.gradeFailed) return `<span class="chip r" title="Grading failed for this sheet (${(s.gradeFailReason||'error').replace(/"/g,'')}). It was set aside so the rest of the batch could finish — fix and re-run, or grade by hand.">GRADING FAILED</span>`+ar;
+    if(s.notFixable) return `<span class="chip r" title="The scan could not be read even after enhancement (${(s.notFixableReason||'unreadable').replace(/"/g,'')}). Rescan at ≥300 dpi with darker pencil, or grade by hand.">NOT FIXABLE</span>`+ar;
+    return `<span class="chip r" title="OCR was not available for this uploaded scan — enable the local model in step 2 and re-run, or grade by hand">NEEDS REVIEW</span>`+ar;
+  }
   return `<span class="chip q" title="Waiting for the grading agent (step 2)">QUEUED</span>`+ar;
 }
 function sheetSummary(s){
@@ -1223,15 +1664,26 @@ function cardHtml(s){
     ?`<img alt="worksheet ${s.id}" src="${sideDataUrl(s,0,s.status==='graded',0.55)}">`
     :((s.status==='graded'&&ovlUrl(s,0))?`<img alt="graded scan ${s.id}" src="${ovlUrl(s,0)}">`:(s.thumb?`<img alt="uploaded scan ${s.id}" src="${s.thumb}">`:'<span style="color:#8A97A2;font-size:12px">uploaded scan</span>'));
   const open=(s.status==='graded'&&!s.archived)?`<button class="open" onclick="openSheet('${s.id}')">Open · print / save / email</button>`:'';
+  const rot=(s.source!=='synthetic'&&s.status!=='graded'&&!s.archived)?`<button class="open" title="Rotate this scan 90° — it will be graded at this orientation" onclick="rotateSheet('${s.id}')">↻ Rotate${s.sides&&typeof s.sides[0].rotate==='number'&&s.sides[0].rotate?(' · '+s.sides[0].rotate+'°'):''}</button>`:'';
   return `<div class="card ${state.sel.has(s.id)?'sel':''}" data-id="${s.id}">
     <label class="ck" title="Select this sheet"><input type="checkbox" ${state.sel.has(s.id)?'checked':''} aria-label="Select ${s.id}" onchange="toggleSel('${s.id}',this.checked)"></label>
     <div class="thumb">${th}</div>
     <div class="meta"><strong>${s.setCode||s.fileName||'Uploaded sheet'}</strong>
     <span class="id">${s.id} · ${s.studentId||'unassigned'} · ${s.examDate||'—'}</span>
     <span class="id">${sheetSummary(s)}</span>
-    <span>${statusChips(s)}</span>${open}</div></div>`;
+    <span>${statusChips(s)}</span>${open}${rot}</div></div>`;
 }
 window.toggleSel=function(id,on){ if(on)state.sel.add(id); else state.sel.delete(id); renderQueue(); };
+window.rotateSheet=async function(id){
+  const s=state.sheets.find(x=>x.id===id); if(!s||s.source==='synthetic')return;
+  for(const sd of s.sides){
+    sd.rotate=(((sd.rotate||0)+90)%360); sd.procUrl=null; sd.__ocr=null; // clear so grading re-prepares at the new angle
+    try{ const p=await prepareImage(sd.imageUrl,sd.rotate,{enhance:false}); sd.dispUrl=p.url; }catch(e){}
+  }
+  if(s.sides[0]&&s.sides[0].dispUrl) s.thumb=s.sides[0].dispUrl;   // show the rotated scan in the card
+  renderQueue(); saveState();
+  showToast('Rotated '+id+' to '+s.sides[0].rotate+'° — it will be graded at this orientation. Auto-detect is skipped for sheets you set by hand.');
+};
 
 function compactRow(s){
   const open=(s.status==='graded'&&!s.archived)?`<button class="open" style="margin:0" onclick="openSheet('${s.id}')">Open</button>`:'';
@@ -1251,20 +1703,56 @@ function compactTable(rows){
     <tbody>${rows.map(compactRow).join('')}</tbody></table></div>`;
 }
 
+/* Manual-review panel (step 2): lists every sheet the agent set aside for
+   hand grading — grading failures, unreadable/not-fixable scans, and any sheet
+   with no OCR tier — so they're visible in the UI, named, and openable. The
+   batch never blocks on these; it finishes the rest and reports them here. */
+function renderManualReview(){
+  const box=$('#manualReview'); if(!box) return;
+  const need=state.sheets.filter(s=>s.status==='review'&&!s.archived);
+  if(!need.length){ box.innerHTML=''; return; }
+  const chip=s=>s.gradeFailed?'GRADING FAILED':s.notFixable?'NOT FIXABLE':'NEEDS REVIEW';
+  const why=s=>s.gradeFailed?('grading failed'+(s.gradeFailReason?' — '+s.gradeFailReason:''))
+             :s.notFixable?('scan not fixable'+(s.notFixableReason?' — '+s.notFixableReason:''))
+             :'OCR unavailable or low confidence — grade by hand';
+  const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const rows=need.map(s=>
+    `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid #F0E3D6;flex-wrap:wrap">
+       <span class="chip r">${chip(s)}</span>
+       <strong style="font-family:ui-monospace,SFMono-Regular,monospace">${esc(s.id)}</strong>
+       <span style="color:#8A6A4A;font-size:12.5px">${esc(s.setCode||'')}</span>
+       <span style="color:#7A6A55;font-size:12.5px;flex:1;min-width:160px">${esc(why(s))}</span>
+       <button class="btn ghost" style="padding:4px 12px" onclick="selectSheet('${esc(s.id)}');switchTab('review')">Open</button>
+     </div>`).join('');
+  box.innerHTML=
+    `<div style="margin-top:12px;border:1px solid #E6B89A;background:#FBF3EC;border-radius:10px;overflow:hidden" role="status">
+       <div style="padding:10px 12px;font-weight:700;color:#9A5A2B;background:#F6E4D6;display:flex;justify-content:space-between;align-items:center;gap:8px">
+         <span>⚠ ${need.length} sheet(s) need manual grading</span>
+         <span style="font-weight:500;font-size:12px;color:#9A5A2B">the batch skipped these and graded the rest</span>
+       </div>${rows}
+     </div>`;
+}
+
 function renderQueue(){
   // prune stale selections
   const live=new Set(state.sheets.map(s=>s.id));
   [...state.sel].forEach(id=>{ if(!live.has(id)) state.sel.delete(id); });
-  const queued=state.sheets.filter(s=>s.status!=='graded'&&!s.archived);
+  const queued=state.sheets.filter(s=>s.status!=='graded'&&s.status!=='review'&&!s.archived);
   const graded=state.sheets.filter(s=>s.status==='graded'&&!s.archived);
+  const review=state.sheets.filter(s=>s.status==='review'&&!s.archived);
   const archived=state.sheets.filter(s=>s.archived);
-  const qG=$('#queue'), gG=$('#graded'), aG=$('#archive');
+  const qG=$('#queue'), gG=$('#graded'), aG=$('#archive'), rG=$('#reviewList');
   qG.innerHTML=queued.length?(state.view.q==='compact'?compactTable(queued):queued.map(cardHtml).join(''))
     :'<div class="empty">Nothing queued. Upload scans above or load the sample batch.</div>';
   gG.innerHTML=graded.length?(state.view.g==='compact'?compactTable(graded):graded.map(cardHtml).join(''))
     :'<div class="empty">No graded sheets yet. Queue sheets in step 1, then run the grading agent in step 2.</div>';
   aG.innerHTML=archived.length?archived.map(cardHtml).join('')
     :'<div class="empty">Nothing archived. Use 🗄 Archive selected / all on the queue (step 1) or graded (step 3) frames.</div>';
+  if(rG) rG.innerHTML=review.length?review.map(cardHtml).join('')
+    :'<div class="empty">Nothing here — every sheet was graded. Sheets the agent can\'t grade (unreadable scans, grading failures) are moved here automatically.</div>';
+  if($('#cR')){ $('#cR').textContent=review.length; $('#cR').classList.toggle('has',review.length>0); }
+  if($('#reviewInfo')) $('#reviewInfo').textContent=review.length+' need grading';
+  if($('#btnRequeueAll')) $('#btnRequeueAll').disabled=review.length===0;
   $('#cA').textContent=archived.length; $('#cA').classList.toggle('has',archived.length>0);
   const selA=archived.filter(s=>state.sel.has(s.id)).length;
   $('#selInfoA').textContent=selA+' of '+archived.length+' selected';
@@ -1279,6 +1767,7 @@ function renderQueue(){
   $('#ckAllQ').checked=queued.length>0&&selQ===queued.length;
   $('#ckAllG').checked=graded.length>0&&selG===graded.length;
   renderSummary(queued,graded);
+  renderManualReview();
   if(!state.__ingesting){
     if(!state.sheets.length) setIntakeGuide('upload','run','Waiting for worksheets — drop files below, choose files, or load the sample batch.',false);
     else if(queued.length) setIntakeGuide('ready','ok',queued.length+' sheet(s) queued — press ▶ Run grading agent, or continue to step 2 · Grade.',false);
@@ -1547,15 +2036,176 @@ function parseOcrProblems(text){
   }
   return out;
 }
-async function browserOcrSide(imageUrl){
+/* ══════════════ scan preprocessing: orientation + faint-pencil enhance ══════════════
+   Real scans arrive upside-down, tilted, or in barely-there pencil. Before OCR we
+   (1) rotate to the orientation that reads best, (2) lift faint graphite to solid ink
+   with local adaptive thresholding, and (3) optionally deskew small tilt. All
+   client-side canvas — no network, no dependencies, worksheets never leave the device. */
+function _rotatedCanvas(img,deg,maxDim){
+  let iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+  const s=Math.min(1,(maxDim||2000)/Math.max(iw,ih,1));
+  iw=Math.max(1,Math.round(iw*s)); ih=Math.max(1,Math.round(ih*s));
+  const swap=(deg===90||deg===270);
+  const c=document.createElement('canvas'); c.width=swap?ih:iw; c.height=swap?iw:ih;
+  const x=c.getContext('2d'); if(!x)return c;
+  x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height);
+  x.save(); x.translate(c.width/2,c.height/2); x.rotate((deg||0)*Math.PI/180);
+  x.drawImage(img,-iw/2,-ih/2,iw,ih); x.restore();
+  return c;
+}
+function _adaptiveInk(c,C){
+  // local adaptive (mean) threshold via integral image — darkens faint pencil to solid ink
+  const x=c.getContext('2d'); if(!x)return c;
+  const W=c.width,H=c.height, im=x.getImageData(0,0,W,H), d=im.data, N=W*H;
+  const g=new Float64Array(N);
+  for(let i=0,p=0;i<d.length;i+=4,p++) g[p]=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+  const I=new Float64Array((W+1)*(H+1));
+  for(let y=0;y<H;y++){ let rs=0; for(let xx=0;xx<W;xx++){ rs+=g[y*W+xx]; I[(y+1)*(W+1)+(xx+1)]=I[y*(W+1)+(xx+1)]+rs; } }
+  const win=Math.max(15,((Math.min(W,H)>>5)|1)), r=win>>1, bias=(C==null?10:C);
+  for(let y=0;y<H;y++){
+    const y0=Math.max(0,y-r), y1=Math.min(H-1,y+r);
+    for(let xx=0;xx<W;xx++){
+      const x0=Math.max(0,xx-r), x1=Math.min(W-1,xx+r), area=(x1-x0+1)*(y1-y0+1);
+      const sum=I[(y1+1)*(W+1)+(x1+1)]-I[y0*(W+1)+(x1+1)]-I[(y1+1)*(W+1)+x0]+I[y0*(W+1)+x0];
+      const mean=sum/area, p=y*W+xx, v=(g[p]<mean-bias)?0:255, o=p*4;
+      d[o]=d[o+1]=d[o+2]=v; d[o+3]=255;
+    }
+  }
+  x.putImageData(im,0,0); return c;
+}
+function _deskew(c){
+  // estimate small skew (−5..5°) by maximizing horizontal ink-projection variance on a downscaled binary
+  const W=c.width,H=c.height; if(W<40||H<40) return c;
+  const sw=Math.min(600,W), sh=Math.max(1,Math.round(H*sw/W));
+  const t=document.createElement('canvas'); t.width=sw; t.height=sh; const tx=t.getContext('2d'); if(!tx)return c;
+  tx.drawImage(c,0,0,sw,sh); const d=tx.getImageData(0,0,sw,sh).data, ink=new Uint8Array(sw*sh);
+  for(let i=0,p=0;i<d.length;i+=4,p++) ink[p]=d[i]<128?1:0;
+  const variance=ang=>{ const tn=Math.tan(ang), rows=new Float64Array(sh);
+    for(let y=0;y<sh;y++)for(let xx=0;xx<sw;xx++){ if(ink[y*sw+xx]){ const ry=y+Math.round((xx-sw/2)*tn); if(ry>=0&&ry<sh)rows[ry]++; } }
+    let m=0; for(let y=0;y<sh;y++)m+=rows[y]; m/=sh; let v=0; for(let y=0;y<sh;y++){const e=rows[y]-m; v+=e*e;} return v; };
+  let best=0,bv=-1; for(let a=-5;a<=5;a++){ const ang=a*Math.PI/180,v=variance(ang); if(v>bv){bv=v;best=ang;} }
+  if(Math.abs(best)<0.9*Math.PI/180) return c;
+  const out=document.createElement('canvas'); out.width=W; out.height=H; const ox=out.getContext('2d'); if(!ox)return c;
+  ox.fillStyle='#fff'; ox.fillRect(0,0,W,H); ox.save(); ox.translate(W/2,H/2); ox.rotate(-best); ox.drawImage(c,-W/2,-H/2); ox.restore(); return out;
+}
+function _contrastStretch(c,loP,hiP,gamma){
+  // percentile contrast stretch + gamma — recovers faint pencil while keeping stroke gradation
+  const x=c.getContext('2d'); if(!x)return c;
+  const W=c.width,H=c.height,im=x.getImageData(0,0,W,H),d=im.data,N=W*H;
+  const g=new Float64Array(N),hist=new Uint32Array(256);
+  for(let i=0,p=0;i<d.length;i+=4,p++){ const v=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; g[p]=v; hist[Math.max(0,Math.min(255,v|0))]++; }
+  let lo=0,hi=255,acc=0; const lp=(loP==null?0.02:loP), hp=(hiP==null?0.02:hiP);
+  for(let i=0;i<256;i++){ acc+=hist[i]; if(acc>=N*lp){ lo=i; break; } }
+  acc=0; for(let i=255;i>=0;i--){ acc+=hist[i]; if(acc>=N*hp){ hi=i; break; } }
+  const span=Math.max(1,hi-lo), gm=(gamma==null?0.6:gamma);
+  for(let i=0,p=0;i<d.length;i+=4,p++){ let v=(g[p]-lo)/span; v=v<0?0:v>1?1:v; v=Math.pow(v,gm); const o=Math.round(v*255); d[i]=d[i+1]=d[i+2]=o; d[i+3]=255; }
+  x.putImageData(im,0,0); return c;
+}
+/* ── bridge to the embedded preprocessing pipeline ──────────────────────────
+   Upgrades faint-pencil recovery (CLAHE + Sauvola) and tilt correction (Hough
+   deskew) over the legacy canvas filters, and returns the whole-sheet
+   confidence gate so the agent can tell a fixable scan from one that must be
+   set aside for review. Runs in-place on the canvas; falls back to the legacy
+   chain if the pipeline is unavailable or throws. */
+function _ppReady(){ return typeof GradeFlowPreproc!=='undefined'; }
+function _pipelineCanvas(c,mode,deskew){
+  const x=c.getContext('2d'); if(!x) return null;
+  const res=GradeFlowPreproc.runPipeline(x.getImageData(0,0,c.width,c.height),{
+    illumination:'clahe',
+    deskew:{enabled:!!deskew, maxAngle:15},
+    sauvola:{window:19,k:0.15},                  // low k recovers faint graphite
+    gridRemoval:{enabled:(mode==='ink')},         // strip worksheet ruling for the line reader
+    binarize:(mode==='ink'),                      // 'ink' → binary; 'readable' → grayscale
+    gate:{minGlyphPx:20, minContrast:38}
+  });
+  x.putImageData(res.imageData,0,0);
+  return res.meta;                                // {gate, detectedSkewDeg, stages, ...}
+}
+async function prepareImage(imageUrl,deg,opts){
+  const img=await loadImg(imageUrl);
+  let c=_rotatedCanvas(img,deg||0,2000);
+  const mode=(opts&&opts.mode)||'readable';
+  const wantEnhance=!(opts&&opts.enhance===false);
+  let meta=null, prep='legacy';
+  if(wantEnhance && _ppReady()){
+    try{ meta=_pipelineCanvas(c,mode,!!(opts&&opts.deskew)); prep='pipeline'; }
+    catch(e){ meta=null; prep='legacy'; }         // pipeline error → legacy chain below
+  }
+  if(prep==='legacy'){
+    if(opts&&opts.deskew) c=_deskew(c);
+    if(wantEnhance){
+      c=_contrastStretch(c,0.02,0.02,0.55);       // lift faint graphite (both modes start here)
+      if(mode==='ink') c=_adaptiveInk(c,10);       // additionally binarize for the line reader
+    }
+  }
+  return {url:c.toDataURL('image/png'),w:c.width,h:c.height,deg:deg||0,
+          gate:(meta&&meta.gate)||null, skew:(meta&&meta.detectedSkewDeg)||0, prep};
+}
+function _scoreParse(res){ return (res&&res.problems?res.problems.length:0)*100 + (res&&res.conf?res.conf*100:0); }
+function _scanOpts(){
+  const on=(id,def)=>{const el=$('#'+id); return el? !!el.checked : def;};
+  const mode=($('#enhanceMode')&&$('#enhanceMode').value)||'readable';
+  return {autoRotate:on('autoRotate',true), enhance:on('enhanceFaint',true), deskew:on('deskew',false), mode};
+}
+
+/* run Tesseract on an already-prepared (upright, enhanced) image */
+async function ocrPrepared(url){
+  const w=await getBocrWorker(); let data;
+  try{ ({data}=await w.recognize(url,{},{text:true,blocks:true})); }
+  catch(e){ ({data}=await w.recognize(url)); }
+  const text=data.text||'';
+  const {problems}=parseOcrProblemsFromWords(collectWords(data),text);
+  const words=(text.match(/[A-Za-z0-9]{2,}/g)||[]).length;   // printed-text signal — the reliable up/down cue
+  return {problems,conf:(data.confidence||0)/100,text,words};
+}
+/* orientation score: parsed arithmetic dominates; printed-word count breaks ties and
+   is what flips an upside-down page (titles/operands read one way only), even when the
+   handwriting is too faint to parse. */
+function _scoreParse(res){
+  if(!res) return 0;
+  const p=res.problems?res.problems.length:0, w=res.words||0, c=res.conf||0;
+  return p*1000 + w*3 + c*100;
+}
+
+/* choose orientation + build the enhanced image the reader/model will consume.
+   Strategy: enhance faint pencil first, then try candidate rotations (aspect-ordered)
+   and keep the one that reads best. Works up/down because the printed text only reads
+   right one way. Falls back to an aspect-based portrait fix if OCR is unavailable. */
+async function prepareSideForOcr(sd){
+  const o=_scanOpts(), opts={enhance:o.enhance,deskew:o.deskew,mode:o.mode};
+  if(typeof sd.rotate==='number' && !o.autoRotate){           // hand-set angle, auto off
+    const p=await prepareImage(sd.imageUrl,sd.rotate,opts);
+    sd.procUrl=p.url; sd.procW=p.w; sd.procH=p.h; sd.__ocr=null; sd.__gate=p.gate; sd.__skew=p.skew; return sd.rotate;
+  }
+  let land=false; try{ const im=await loadImg(sd.imageUrl); land=(im.naturalWidth||im.width)>(im.naturalHeight||im.height); }catch(e){}
+  const base=land?[90,270,0,180]:[0,180,90,270];
+  const order=(typeof sd.rotate==='number')?[sd.rotate].concat(base):base;
+  if(o.autoRotate){
+    try{
+      let best=null; const tried=new Set();
+      for(const deg of order){
+        const dg=((deg%360)+360)%360; if(tried.has(dg))continue; tried.add(dg);
+        const p=await prepareImage(sd.imageUrl,dg,opts);
+        const res=await ocrPrepared(p.url);
+        const sc=_scoreParse(res);
+        if(!best||sc>best.sc) best={sc,deg:dg,p,res};
+        if(res.problems.length>=5 || res.words>=40) break;    // clearly the right way up — stop
+      }
+      sd.rotate=best.deg; sd.procUrl=best.p.url; sd.procW=best.p.w; sd.procH=best.p.h; sd.__ocr=best.res;
+      sd.__gate=best.p.gate; sd.__skew=best.p.skew;
+      return best.deg;
+    }catch(e){ /* Tesseract unavailable — fall through to aspect fix + enhance */ }
+  }
+  const deg=(typeof sd.rotate==='number')?sd.rotate:(land?90:0);   // at least de-rotate a sideways scan
+  const p=await prepareImage(sd.imageUrl,deg,opts);
+  sd.procUrl=p.url; sd.procW=p.w; sd.procH=p.h; sd.__ocr=null; sd.__gate=p.gate; sd.__skew=p.skew; return deg;
+}
+
+async function browserOcrSide(sd){
   // NOTE: plain-text OCR tier — cannot see color, so prior red ✗ marks are not detected here.
-  // Prior-cross → green-circle handling requires the vision-model or cloud tier (was_wrong flag).
-  const w=await getBocrWorker();
-  let data;
-  try{ ({data}=await w.recognize(imageUrl,{},{text:true,blocks:true})); } // request geometry
-  catch(e){ ({data}=await w.recognize(imageUrl)); }                        // older API fallback
-  const {problems}=parseOcrProblemsFromWords(collectWords(data),data.text||'');
-  return {problems,conf:(data.confidence||0)/100};
+  const deg=await prepareSideForOcr(sd);          // orientation + faint-pencil enhance
+  const res=sd.__ocr || await ocrPrepared(sd.procUrl); sd.__ocr=null;
+  return {problems:res.problems,conf:res.conf,rotate:deg};
 }
 
 function evalExpr(q){
@@ -1567,42 +2217,45 @@ function evalExpr(q){
   return null;
 }
 
-/* ══════════════ deterministic type-aware grader ══════════════
-   Recomputes truth from (student answer vs answer key) per the QMS evidence
-   rule — the model/OCR never sets a grade. cmp selects the comparator;
-   absent cmp → integer equality (the original arithmetic behaviour). */
-function gradeCmp(p){
-  const got=p.ocr!=null?p.ocr:p.written, exp=p.expected, cmp=p.cmp||'int';
-  if(cmp==='div'){                    // "17 R 2" / "17 remainder 2" / "17 R0"→"17"
-    const nz=s=>String(s).toUpperCase().replace(/\s+/g,'').replace('REMAINDER','R').replace(/R0$/,'');
-    return nz(got)===nz(exp);
+/* Summarize WHY a sheet could not be read, from the per-side confidence gate
+   produced by the preprocessing pipeline. Returns {reasons[], escalate}. */
+function _fixabilityReason(sheet){
+  const map={'glyph-too-small':'text too small / low resolution',
+             'low-contrast':'faint pencil / low contrast',
+             'sparse-ink':'little or no writing detected'};
+  const reasons=new Set(); let escalate=false;
+  for(const sd of (sheet.sides||[])){
+    const g=sd&&sd.__gate;
+    if(g&&g.flags) g.flags.forEach(f=>{ reasons.add(map[f]||f); if(f==='glyph-too-small') escalate=true; });
   }
-  if(cmp==='frac'){return fracEq(parseFrac(got),parseFrac(exp));}
-  if(cmp==='poly'){return polyEq(parsePoly(got),parsePoly(exp));}  // derivatives / integrals (+C ignored)
-  if(cmp==='text'){
-    const nt=s=>String(s).toLowerCase().replace(/[.\s]+$/,'').replace(/\s+/g,' ').trim();
-    return nt(got)===nt(exp);
-  }
-  const ni=s=>{const t=String(s).trim();return /^-?\d+$/.test(t)?parseInt(t,10):NaN;};   // int
-  const a=ni(got),b=ni(exp);
-  if(!isNaN(a)&&!isNaN(b))return a===b;
-  return String(got).trim()===String(exp).trim();
+  return {reasons:[...reasons], escalate};
+}
+/* One consistent "not fixable" notification. Names the sheet id, gives the
+   likely cause, records the flag, and returns false so the batch continues. */
+function _notFixable(sheet,extra){
+  const {reasons,escalate}=_fixabilityReason(sheet);
+  const why=reasons.length?(' · likely cause: '+reasons.join(', ')):'';
+  const esc=escalate?' A higher-resolution rescan (≥300 dpi) or the WebGPU model tier may recover it.':'';
+  sheet.notFixable=true; sheet.notFixableReason=reasons.join(', ')||'unreadable';
+  log(sheet.id+' → NOT FIXABLE'+why+(extra||'')+esc+' — set aside for review, continuing with the next sheet.','wr');
+  return false;
 }
 
 async function bocrAttempt(sheet,who){
   if(!($('#bocrUse')&&$('#bocrUse').checked)){ log(sheet.id+' → no further OCR tier enabled — routed to review','wr'); return false; }
   try{
-    agentGuide(who+': reading the scan with the in-browser OCR engine (all local)…',true);
-    let total=0, confSum=0, nsides=0;
+    agentGuide(who+': auto-orienting and enhancing the scan, then reading it locally…',true);
+    let total=0, confSum=0, nsides=0; const rots=[];
     for(const sd of sheet.sides){
-      const out=await browserOcrSide(sd.imageUrl);
+      const out=await browserOcrSide(sd);
       sd.problems=out.problems.map(p=>({...p,ocr:String(p.written),conf:+out.conf.toFixed(3),expected:evalExpr(p.q),correct:null}));
-      total+=out.problems.length; confSum+=out.conf; nsides++;
+      total+=out.problems.length; confSum+=out.conf; nsides++; rots.push(out.rotate||0);
     }
     const meanConf=nsides?confSum/nsides:0;
-    if(!total){ log(sheet.id+' → in-browser OCR found no readable "a op b = c" lines — routed to review (faint pencil or skewed scan)','wr'); return false; }
-    if(meanConf<0.45){ log(sheet.id+' → in-browser OCR confidence too low ('+Math.round(meanConf*100)+'%) — routed to review rather than guessing','wr'); return false; }
-    log(sheet.id+' → in-browser OCR read '+total+' problem(s) · mean confidence '+Math.round(meanConf*100)+'%','ok');
+    const rotNote=rots.some(d=>d)?(' · auto-rotated '+rots.map(d=>d+'°').join('/')):'';
+    if(!total){ return _notFixable(sheet, ' · no readable "a op b = c" lines'+rotNote); }
+    if(meanConf<0.45){ return _notFixable(sheet, ' · OCR confidence too low ('+Math.round(meanConf*100)+'%)'+rotNote); }
+    log(sheet.id+' → in-browser OCR read '+total+' problem(s) · mean confidence '+Math.round(meanConf*100)+'%'+rotNote,'ok');
     return true;
   }catch(e){
     $('#ocrDot').className='dot off';
@@ -1620,11 +2273,14 @@ async function runAgent(){
   $('#jsonOut').innerHTML='';
   log('── Agent run start · '+queued.length+' sheet(s) · OCR='+($('#vlmUse').checked?'in-browser reader / synthetic':'deterministic/synthetic')+' ──');
 
-  let si=0;
+  let si=0; const skipped=[]; const gradeFailures=[];
   for(const sheet of queued){
     si++;
     const who=`Sheet ${si} of ${queued.length} — ${sheet.id}`;
     resetStages();
+    sheet.notFixable=false; sheet.notFixableReason=null;   // clear stale flags on re-run
+    sheet.gradeFailed=false; sheet.gradeFailReason=null;
+    try{
     $('#agentStatus').textContent='Processing '+sheet.id+'…';
     setStage('feed','run'); agentGuide(who+': feeding into the transport (ESP32 roller, low-noise profile)…',true);
     log(sheet.id+' → transport feed engaged (ESP32 roller, low-noise profile)'); await wait(260); setStage('feed','ok');
@@ -1642,13 +2298,14 @@ async function runAgent(){
         p.ocr=String(p.written);
         p.conf=+(0.86+r()*0.135).toFixed(3);
       }));
-      {const _all=sheet.sides.flatMap(s=>s.problems); log(sheet.id+' → OCR complete · '+_all.length+' fields · mean conf '+(_all.reduce((a,p)=>a+p.conf,0)/Math.max(1,_all.length)).toFixed(3),'ok');}
+      log(sheet.id+' → OCR complete · 20 fields · mean conf '+(sheet.sides.flatMap(s=>s.problems).reduce((a,p)=>a+p.conf,0)/20).toFixed(3),'ok');
     }else if($('#vlmUse')&&$('#vlmUse').checked&&location.protocol!=='file:'){
       try{
         agentGuide(who+': running the in-browser AI model on the scan (all local)…',true);
         let total=0;
         for(const sd of sheet.sides){
-          sd.problems=await vlmOcrSide(sd.imageUrl);
+          await prepareSideForOcr(sd);            // auto-orient + faint-pencil enhance first
+          sd.problems=await vlmOcrSide(sd.procUrl||sd.imageUrl);
           total+=sd.problems.length;
         }
         if(!total) throw new Error('model read no gradable problems');
@@ -1664,7 +2321,8 @@ async function runAgent(){
         agentGuide(who+': sending scan to your cloud OCR proxy (OpenRouter)…',true);
         let total=0;
         for(const sd of sheet.sides){
-          sd.problems=await cloudOcrSide(sd.imageUrl);
+          await prepareSideForOcr(sd);            // auto-orient + faint-pencil enhance first
+          sd.problems=await cloudOcrSide(sd.procUrl||sd.imageUrl);
           total+=sd.problems.length;
         }
         if(!total){ ok=false; log(sheet.id+' → cloud OCR returned no problems — routed to review','wr'); }
@@ -1680,23 +2338,42 @@ async function runAgent(){
 
     if(!ok){
       sheet.status='review'; state.rel=0; updateRel();
-      agentGuide(who+': routed to review (instructor intervention) — reliability run reset.',false);
-      log(sheet.id+' → REVIEW · reliability run reset (counts as intervention)','wr');
+      if(sheet.notFixable){
+        setStage('ocr','err');
+        agentGuide(who+': not fixable ('+(sheet.notFixableReason||'unreadable')+') — set aside for review, moving to the next sheet.',false);
+        log(sheet.id+' → REVIEW · not fixable ('+(sheet.notFixableReason||'unreadable')+') · reliability run reset','wr');
+      }else{
+        agentGuide(who+': routed to review (instructor intervention) — reliability run reset.',false);
+        log(sheet.id+' → REVIEW · reliability run reset (counts as intervention)','wr');
+      }
       renderQueue(); saveState(); continue;
     }
 
     setStage('grade','run');
     agentGuide(who+': comparing every detected answer against the computed result (deterministic engine)…',true);
     let correct=0,total=0; const wrong=[],corrected=[];
-    sheet.sides.forEach(sd=>sd.problems.forEach(p=>{
-      if(p.expected==null) p.expected=evalExpr(p.q);
-      p.correct = gradeCmp(p);
-      total++;
-      if(p.correct){ correct++; if(p.wasWrong)corrected.push(p.n); }
-      else wrong.push(p.n);
-    }));
-    sheet.score=Math.round(100*correct/Math.max(1,total));
-    sheet.wrong=wrong; sheet.corrected=corrected; sheet.gradedAt=new Date().toISOString();
+    try{
+      sheet.sides.forEach(sd=>sd.problems.forEach(p=>{
+        if(p.expected==null) p.expected=evalExpr(p.q);
+        p.correct = String(p.ocr)===String(p.expected);
+        total++;
+        if(p.correct){ correct++; if(p.wasWrong)corrected.push(p.n); }
+        else wrong.push(p.n);
+      }));
+      sheet.score=Math.round(100*correct/Math.max(1,total));
+      sheet.wrong=wrong; sheet.corrected=corrected; sheet.gradedAt=new Date().toISOString();
+    }catch(gradeErr){
+      const reason=(gradeErr&&gradeErr.message)||String(gradeErr);
+      sheet.status='review'; sheet.gradeFailed=true; sheet.gradeFailReason=reason;
+      state.rel=0; updateRel();
+      gradeFailures.push({id:sheet.id,reason});
+      setStage('grade','err');
+      agentGuide(who+': grading failed — set aside for review, moving on to the next sheet.',false);
+      log(sheet.id+' → GRADING FAILED ('+reason+') — set aside for review, continuing with the rest','er');
+      showToast('Grading failed for '+sheet.id+' — set aside for review. The batch is still running.','Open review','review');
+      renderQueue(); renderSheetList(); saveState();
+      continue;   // next sheet — a single failed sheet never blocks the batch
+    }
     await wait(300); setStage('grade','ok');
     log(sheet.id+' → graded: '+correct+'/'+total+' · score '+sheet.score
       +(wrong.length?' · wrong: #'+wrong.join(', #'):' · perfect')
@@ -1710,6 +2387,18 @@ async function runAgent(){
     sheet.status='graded'; state.rel++; updateRel();
     emitJson(sheet);
     renderQueue(); renderSheetList(); renderReports(); saveState();
+    }catch(err){
+      const reason=(err&&err.message)||String(err);
+      try{ sheet.status='review'; }catch(_){}
+      state.rel=0; try{ updateRel(); }catch(_){}
+      skipped.push({id:sheet.id,reason});
+      try{ setStage('ocr','err'); }catch(_){}
+      agentGuide(who+': hit an error — skipped, moving on to the next sheet.',false);
+      log(sheet.id+' → ERROR ('+reason+') — skipped this sheet, continuing with the rest','er');
+      try{ showToast('Error on '+sheet.id+' ('+reason+') — skipped. The batch is still running.','Open review','review'); }catch(_){}
+      try{ renderQueue(); saveState(); }catch(_){}
+      continue;
+    }
   }
 
   $('#agentStatus').textContent='Run complete.';
@@ -1718,19 +2407,30 @@ async function runAgent(){
   log('── Agent run complete ──','ok');
   const done=state.sheets.filter(s=>runIds.includes(s.id)&&s.status==='graded');
   const revN=state.sheets.filter(s=>runIds.includes(s.id)&&s.status==='review').length;
+  const nfSheets=state.sheets.filter(s=>runIds.includes(s.id)&&s.notFixable);
+  if(nfSheets.length) log('Not fixable: '+nfSheets.length+' sheet(s) set aside for review — '+nfSheets.map(s=>s.id+' ('+(s.notFixableReason||'unreadable')+')').join('; ')+'. Every other sheet was still processed.','wr');
+  const errN=skipped.length, errList=skipped.map(s=>s.id).join(', ');
+  if(errN) log('Skipped '+errN+' sheet(s) after errors — '+skipped.map(s=>s.id+' ('+s.reason+')').join('; ')+'. Every other sheet was still processed.','er');
+  const gfN=gradeFailures.length, gfList=gradeFailures.map(s=>s.id).join(', ');
+  if(gfN) log('Grading failed on '+gfN+' sheet(s) — '+gradeFailures.map(s=>s.id+' ('+s.reason+')').join('; ')+'. Every other sheet was still graded.','er');
+  const errNote=errN?` · <strong>${errN}</strong> skipped after errors (${errList})`:'';
+  const gfNote=gfN?` · <strong>${gfN}</strong> grading failed (${gfList})`:'';
   if(done.length){
     const avg=Math.round(done.reduce((a,s)=>a+s.score,0)/done.length);
     const perfect=done.filter(s=>s.score===100).length;
     $('#runDone').innerHTML=`<div class="done" role="status"><span class="tk">✓</span>
-      <span>Grading complete — <strong>${done.length}</strong> sheet(s) graded · batch average <strong>${avg}</strong> · <strong>${perfect}</strong> perfect${revN?` · ${revN} sent to review`:''}.</span>
+      <span>Grading complete — <strong>${done.length}</strong> sheet(s) graded · batch average <strong>${avg}</strong> · <strong>${perfect}</strong> perfect${revN?` · ${revN} sent to review`:''}${gfNote}${errNote}.</span>
       <button class="btn" onclick="switchTab('graded')">Open graded sheets →</button>
       <button class="btn ghost" onclick="switchTab('reports')">View tally</button></div>`;
-    showToast(`Grading complete — ${done.length} sheet(s), average ${avg}.`,'View graded →','graded');
+    const failN=errN+gfN;
+    showToast(`Grading complete — ${done.length} sheet(s), average ${avg}${failN?`, ${failN} not graded (${[gfList,errList].filter(Boolean).join(', ')})`:''}.`,'View graded →','graded');
     pulseCount('#cG');
   }else if(revN){
-    $('#runDone').innerHTML=`<div class="done" style="border-color:#E0B98A;background:var(--amber-soft);color:var(--amber)"><span class="tk" style="background:var(--amber)">!</span><span>${revN} sheet(s) routed to review — nothing graded this run.</span></div>`;
+    $('#runDone').innerHTML=`<div class="done" style="border-color:#E0B98A;background:var(--amber-soft);color:var(--amber)"><span class="tk" style="background:var(--amber)">!</span><span>${revN} sheet(s) routed to review — nothing graded this run${gfN?` (${gfN} after grading failures: ${gfList})`:''}${errN?` (${errN} after errors: ${errList})`:''}.</span></div>`;
+    if(gfN||errN) showToast(`Nothing graded — ${gfN?gfN+' grading failure(s)':''}${gfN&&errN?', ':''}${errN?errN+' error(s)':''} set aside for review.`,'Open review','review');
   }
   if(!state.selected){ const g=state.sheets.find(s=>s.status==='graded'); if(g) selectSheet(g.id); }
+  renderManualReview();
 }
 
 function emitJson(sheet){
@@ -1937,7 +2637,7 @@ function exportCsv(){
 function switchTab(id){
   $$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
   $$('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+id));
-  if(id==='intake'||id==='graded'||id==='archive') renderQueue();
+  if(id==='intake'||id==='graded'||id==='archive'||id==='review') renderQueue();
   if(id==='output') renderSheetList();
   if(id==='reports') renderReports();
 }
@@ -2044,6 +2744,40 @@ const drop=$('#drop');
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hot');}));
 drop.addEventListener('drop',e=>handleFiles([...e.dataTransfer.files]));
 $('#btnSynth').onclick=loadSyntheticBatch;
+
+/* Tell the user which features are live in this run mode (file:// vs served, vendor present or not) */
+async function detectRunMode(){
+  const el=$('#runmode'); if(!el) return;
+  const show=(cls,html)=>{ el.className='runmode '+cls; el.innerHTML=html+'<button class="rmx" aria-label="Dismiss" onclick="this.parentNode.style.display=\'none\'">×</button>'; el.style.display='flex'; };
+  if(location.protocol==='file:'){
+    show('warn','<b>Running from a local file (file://).</b> Sample tests, grading, marking, faint-pencil enhancement, auto-rotate and exports all work. Reading <i>uploaded scans</i> needs the OCR engine, which browsers block on <code>file://</code> — serve this folder over http (GitHub Pages, S3/CloudFront, or a local web server) to enable it.');
+    return;
+  }
+  let vendor=false;
+  try{ const r=await fetch('vendor/tesseract.min.js',{method:'HEAD'}); vendor=r.ok; }
+  catch(e){ try{ const r2=await fetch('vendor/eng.traineddata',{method:'HEAD'}); vendor=r2.ok; }catch(_){ vendor=false; } }
+  if(vendor) show('ok','<b>Full mode.</b> Everything is active, including OCR of uploaded scans (in-browser, same-origin — nothing leaves this device).');
+  else show('warn','<b>Single-file mode — no <code>vendor/</code> OCR engine found.</b> Sample tests, grading, marking, enhancement, auto-rotate and exports work. Reading <i>uploaded scans</i> is disabled (they route to review) — put the <code>vendor/</code> folder next to <code>index.html</code> to enable OCR.');
+  // optional handwriting model: if vendor/ai/ isn't installed, skip the VLM tier so scans go straight to Tesseract (no per-sheet failure noise)
+  try{ const a=await fetch('vendor/ai/transformers.web.min.js',{method:'HEAD'}); if(!a.ok) throw 0; }
+  catch(e){ const v=$('#vlmUse'); if(v) v.checked=false; }
+}
+detectRunMode();
+(function(){
+  const sel=$('#sampleSubject'); if(!sel)return;
+  sel.innerHTML='<option value="ALL">All subjects</option>'+
+    SAMPLE_SUBJECTS.map(k=>`<option value="${k}">${LEVELS[k]?LEVELS[k].name:k}</option>`).join('');
+})();
+if($('#btnSampleTests')) $('#btnSampleTests').onclick=loadSampleTests;
+if($('#btnRequeueAll')) $('#btnRequeueAll').onclick=()=>{
+  const review=state.sheets.filter(s=>s.status==='review'&&!s.archived);
+  if(!review.length) return;
+  review.forEach(s=>{ s.status='queued'; s.notFixable=false; s.notFixableReason=null; s.gradeFailed=false; s.gradeFailReason=null; });
+  renderQueue(); saveState();
+  log('Re-queued '+review.length+' sheet(s) from Needs grading for another pass.','ok');
+  showToast('Re-queued '+review.length+' sheet(s) — run step 2 · Grade to retry.','Go to Grade','agent');
+  switchTab('agent');
+};
 
 /* ── data maintenance ── */
 function refreshAll(){
