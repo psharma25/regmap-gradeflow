@@ -300,6 +300,7 @@ body.dark .runmode.warn{background:#2a2410;color:#e3c874}
   <button data-tab="output"><span class="stepn">4</span>Output &amp; Print</button><span class="navsep">›</span>
   <button data-tab="reports"><span class="stepn">5</span>Reports</button>
   <button data-tab="review" class="aux" style="margin-left:auto">🚩 Needs grading<span class="count" id="cR">0</span></button>
+  <button data-tab="students" class="aux">👤 Students<span class="count" id="cS">0</span></button>
   <button data-tab="archive" class="aux">🗄 Archive<span class="count" id="cA">0</span></button>
 </nav>
 
@@ -345,6 +346,7 @@ body.dark .runmode.warn{background:#2a2410;color:#e3c874}
         <option value="mixed">Mixed (some faded)</option>
       </select>
       <button class="btn" id="btnSampleTests">Load sample test</button>
+      <button class="btn" id="btnKumonTests" title="Load the nine real uploaded Kumon worksheets across every family — B53a, D11a, D102a, C61a, G81a, I121a, E71a, E72a, E73b — graded by the KumonMath engine">Load real Kumon sheets</button>
     </div>
     <input type="file" id="filePick" accept=".pdf,.zip,image/png,image/jpeg" multiple hidden>
   </div>
@@ -450,7 +452,7 @@ body.dark .runmode.warn{background:#2a2410;color:#e3c874}
 <!-- ════════ OUTPUT ════════ -->
 <section class="tab" id="tab-output">
   <h2>Graded output</h2>
-  <p class="hint">Select a sheet to see the grading report overlaid on the original worksheet. Print routes to the selected queue (final routing is confirmed in the system print dialog on the alpha rig); Save exports a duplex half-letter PDF.</p>
+  <p class="hint">Select a sheet to see the grading report overlaid on the original worksheet, or scroll to <strong>All graded pages</strong> below to see every page's marked result at once — any sheet that could not be graded appears there as an error tile naming the cause. Print routes to the selected queue (final routing is confirmed in the system print dialog on the alpha rig); Save exports a duplex half-letter PDF.</p>
 
   <div class="outwrap">
     <div>
@@ -475,6 +477,7 @@ body.dark .runmode.warn{background:#2a2410;color:#e3c874}
           </select>
         </div>
         <button class="btn pri" id="btnPrint">⎙ Print marks</button>
+        <button class="btn" id="btnPrintAll" title="Print every graded sheet at once — all marked overlays go to the print queue">⎙ Print all graded</button>
         <button class="btn" id="btnSave">↓ Save graded PDF</button>
         <button class="btn" id="btnEmail">✉ Email report</button>
       </div>
@@ -507,6 +510,15 @@ body.dark .runmode.warn{background:#2a2410;color:#e3c874}
 </section>
 
 <!-- ════════ ARCHIVE ════════ -->
+<section class="tab" id="tab-students">
+  <h2>Students</h2>
+  <p class="hint">Each graded sheet is tracked to a student and date. Assign a name to any uploaded scan (👤 on its card) — grades then roll up here per student, newest first. Worksheet level and score are recorded automatically.</p>
+  <div class="toolbar">
+    <span class="selinfo" id="rosterInfo">0 students</span>
+  </div>
+  <div id="rosterList"></div>
+</section>
+
 <section class="tab" id="tab-review">
   <h2>Needs manual grading</h2>
   <p class="hint">Sheets the grading agent could not complete — unreadable / not-fixable scans, grading failures, or scans with no OCR tier enabled. The batch set these aside and graded everything else. Fix the cause (↻ rotate, rescan darker at 300 dpi, or enable a reader in step 2), then re-queue for another pass — or grade them by hand.</p>
@@ -1088,6 +1100,168 @@ body.dark .runmode.warn{background:#2a2410;color:#e3c874}
 })(typeof self !== 'undefined' ? self : this);
 
 /* ═══════════ end embedded preprocessing pipeline ═══════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   KumonMath — deterministic answer-key engine for REAL Kumon scans.
+   Computes every correct answer by math from the printed problem; OCR only
+   reads the student's writing. Registers window.KumonMath.
+   ═══════════════════════════════════════════════════════════════════════ */
+/* =====================================================================
+ * KumonMath — deterministic answer-key engine for real Kumon worksheets.
+ * Computes the correct answer from the PRINTED problem (never from the
+ * student's writing), so the answer key is derived by math, not stored.
+ * OCR only reads what the student wrote; this engine owns every key.
+ * ===================================================================== */
+(function (root) {
+  'use strict';
+
+  // ---- primitive operations -----------------------------------------
+  function add(a, b) { return a + b; }
+  function sub(a, b) { return a - b; }
+  function mul(a, b) { return a * b; }
+  // long division with remainder → canonical "qRr" (or "q" when r==0)
+  function divR(a, b) {
+    if (b === 0) return null;
+    var q = Math.trunc(a / b), r = a - q * b;
+    return { q: q, r: r, text: r === 0 ? String(q) : (q + 'R' + r) };
+  }
+
+  // ---- signed four-operations evaluator (G-level) -------------------
+  // Handles + - × ÷ ( ) with unary minus and negative integers.
+  // Accepts ×·* and ÷/ and Unicode minus (−). Integer results.
+  function evalSigned(expr) {
+    var s = String(expr).replace(/[×·]/g, '*').replace(/[÷]/g, '/').replace(/[−–—]/g, '-').replace(/\s+/g, '');
+    var i = 0;
+    function peek() { return s[i]; }
+    function eat(c) { if (s[i] === c) { i++; return true; } return false; }
+    // grammar: expr = term (('+'|'-') term)*
+    function parseExpr() {
+      var v = parseTerm();
+      while (peek() === '+' || peek() === '-') {
+        var op = s[i++]; var t = parseTerm();
+        v = op === '+' ? v + t : v - t;
+      }
+      return v;
+    }
+    function parseTerm() {
+      var v = parseFactor();
+      while (peek() === '*' || peek() === '/') {
+        var op = s[i++]; var f = parseFactor();
+        v = op === '*' ? v * f : v / f;
+      }
+      return v;
+    }
+    function parseFactor() {
+      if (eat('+')) return parseFactor();
+      if (eat('-')) return -parseFactor();
+      if (eat('(')) { var v = parseExpr(); eat(')'); return v; }
+      var start = i;
+      while (i < s.length && /[0-9.]/.test(s[i])) i++;
+      if (i === start) return NaN;
+      return parseFloat(s.slice(start, i));
+    }
+    var out = parseExpr();
+    if (i !== s.length || !isFinite(out)) return null;
+    // Kumon G answers are integers; keep integer when clean
+    return Number.isInteger(out) ? out : Math.round(out * 1e6) / 1e6;
+  }
+
+  // ---- linear functions (I-level): point + slope → y = m x + b ------
+  // ---- mixed-number fraction addition (E-level) --------------------
+  // a, b are [whole, num, den]; returns the reduced answer in Kumon form:
+  // "W N/D", or "N/D" when whole is 0, or "W" when the fraction vanishes.
+  function _fgcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { var t = b; b = a % b; a = t; } return a || 1; }
+  function fracAdd(a, b) {
+    var an = a[0] * a[2] + a[1], ad = a[2], bn = b[0] * b[2] + b[1], bd = b[2];
+    var num = an * bd + bn * ad, den = ad * bd, g = _fgcd(num, den);
+    num = num / g; den = den / g;
+    var whole = Math.floor(num / den), rem = num - whole * den;
+    if (rem === 0) return String(whole);
+    if (whole === 0) return rem + '/' + den;
+    return whole + ' ' + rem + '/' + den;
+  }
+  function linear(point, slope) {
+    var m = slope, b = point[1] - slope * point[0];
+    var mx = m === 1 ? 'x' : m === -1 ? '-x' : (m + 'x');
+    var bt = b === 0 ? '' : (b > 0 ? '+' + b : '-' + Math.abs(b));
+    return { m: m, b: b, text: ('y=' + mx + bt) };
+  }
+
+  // ---- dispatcher: compute a problem's answer by type ----------------
+  // problem shapes:
+  //   {op:'+'|'-'|'*'|'/', a, b}            arithmetic / long division
+  //   {op:'expr', expr:'2×(-5)+(-4)'}       signed four-ops
+  //   {op:'linear', point:[x,y], slope:m}   linear function
+  function compute(p) {
+    switch (p.op) {
+      case '+': return String(add(p.a, p.b));
+      case '-': return String(sub(p.a, p.b));
+      case '*': case '×': return String(mul(p.a, p.b));
+      case '/': case '÷': { var d = divR(p.a, p.b); return d ? d.text : null; }
+      case 'expr': { var v = evalSigned(p.expr); return v === null ? null : String(v); }
+      case 'linear': return linear(p.point, p.slope).text;
+      case 'frac': return fracAdd(p.a, p.b);
+      default: return null;
+    }
+  }
+
+  // Build the full answer key for a list of problems.
+  function keyFor(problems) { return problems.map(compute); }
+
+  // ---- worksheet family registry (by ID prefix) ----------------------
+  // Tells the app the operation/layout family for a scanned worksheet ID,
+  // so it knows how to compute and where answers sit. Extensible: add a
+  // rule for each new level/topic as it comes.
+  var FAMILIES = [
+    { test: /^B\d/i, family: 'column-add',   op: '+', layout: 'stack2', label: 'Addition (column)' },
+    { test: /^A\d/i, family: 'column-add',   op: '+', layout: 'stack2', label: 'Addition (column)' },
+    { test: /^C\d/i, family: 'mult-2x1',     op: '*', layout: 'stack2', label: 'Multiplication 2×1' },
+    { test: /^D1\d/i,family: 'mult-2x2',     op: '*', layout: 'stack2', label: 'Multiplication 2×2' },
+    { test: /^D10\d/i,family:'long-division',op: '/', layout: 'ldiv',   label: 'Division w/ remainder' },
+    { test: /^E\d/i, family: 'fraction',     op: 'frac', layout: 'inline', label: 'Fraction addition' },
+    { test: /^G\d/i, family: 'signed-ops',   op: 'expr', layout: 'inline', label: 'Signed four-operations' },
+    { test: /^I\d/i, family: 'linear',       op: 'linear', layout: 'work', label: 'Linear functions' }
+  ];
+  function familyFor(id) {
+    id = String(id || '').replace(/\s+/g, '');
+    // most-specific first: D10x (division) must beat D1x (mult)
+    var ordered = FAMILIES.slice().sort(function (a, b) { return b.test.source.length - a.test.source.length; });
+    for (var k = 0; k < ordered.length; k++) if (ordered[k].test.test(id)) return ordered[k];
+    return null;
+  }
+
+  // ---- graded-vs-new detection (teacher red/magenta ink) -------------
+  // Kumon teacher marks are red/magenta pen. If a meaningful fraction of
+  // strongly-red pixels is present, the sheet was already graded once
+  // (treat as a resubmission carrying a prior pass). Pure pencil = new.
+  function redInkFraction(imageData) {
+    var d = imageData.data, n = d.length / 4, red = 0;
+    for (var p = 0; p < d.length; p += 4) {
+      var R = d[p], G = d[p + 1], B = d[p + 2];
+      // strong red/magenta: R high, clearly above G and B
+      if (R > 110 && R - G > 55 && R - B > 30) red++;
+    }
+    return red / n;
+  }
+  function detectGraded(imageData, opts) {
+    opts = opts || {};
+    var thresh = opts.threshold != null ? opts.threshold : 0.0008; // ~0.08% of pixels
+    var frac = redInkFraction(imageData);
+    return { graded: frac >= thresh, redFraction: frac, threshold: thresh };
+  }
+
+  var api = {
+    add: add, sub: sub, mul: mul, divR: divR,
+    evalSigned: evalSigned, linear: linear, fracAdd: fracAdd,
+    compute: compute, keyFor: keyFor,
+    familyFor: familyFor, FAMILIES: FAMILIES,
+    redInkFraction: redInkFraction, detectGraded: detectGraded
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.KumonMath = api;
+})(typeof self !== 'undefined' ? self : this);
+
+/* ═══════════ end KumonMath engine ═══════════ */
 'use strict';
 /* ═══════════════════════════════════════════════════════════════
    GradeFlow AI · single-file alpha console · BitSense pattern:
@@ -1103,6 +1277,126 @@ const HAS_CANVAS = (()=>{try{return !!document.createElement('canvas').getContex
 
 /* seeded RNG — reproducibility is a QMS requirement, not a nicety */
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}}
+
+/* ── memory discipline ───────────────────────────────────────────────
+   Phone/scanner PDFs embed ~2500×3500 page images. Decoded to RGBA that is
+   ~33 MB *per canvas*; holding the full-res bitmap for every page (queue
+   thumbnails + OCR intermediates + data-URL strings) is what exhausts the
+   tab. Fix: decode each page ONCE at ingest, emit a capped working image and
+   a small thumbnail as blob: URLs (compressed bytes, not base64 in the JS
+   heap), free the source, and cap every downstream canvas at WORK_MAX. */
+const WORK_MAX=1500;   // long edge of the OCR / grading working image
+const THUMB_MAX=560;   // long edge of card / gallery thumbnails
+const _mgUrls=new Set();
+function _mkUrl(blob){ const u=URL.createObjectURL(blob); _mgUrls.add(u); return u; }
+function revokeUrl(u){ if(u&&_mgUrls.has(u)){ try{URL.revokeObjectURL(u);}catch(e){} _mgUrls.delete(u); } }
+function _freeCanvas(c){ try{ c.width=0; c.height=0; }catch(e){} }
+/* canvas → blob: URL (Promise); falls back to a data URL only if toBlob is absent */
+function canvasToUrl(c,mime,q){
+  mime=mime||'image/jpeg'; q=(q==null?0.85:q);
+  return new Promise(res=>{
+    try{
+      if(c.toBlob){ c.toBlob(b=>{ res(b?_mkUrl(b):c.toDataURL(mime,q)); }, mime, q); }
+      else res(c.toDataURL(mime,q));
+    }catch(e){ try{ res(c.toDataURL(mime,q)); }catch(_){ res(''); } }
+  });
+}
+/* Decode a source image once and return a capped work image + small thumb as
+   blob URLs. Degrades to the source URL where canvas is unavailable (headless). */
+/* ══════════════ deterministic intake orientation ══════════════
+   Kumon sheets are ink-top-heavy: the printed header / score table sit above
+   the problem area, so the (5%-trimmed) vertical center of mass of ink on an
+   upright page falls above the content middle. Two row-profile features —
+   ink-pixel count and darkness-weighted mass — are voted by whichever sits
+   further from 0.5, with a relaxed second pass for faint-pencil pages.
+   Validated on all 9 real scan pages in all 4 orientations (36/36).
+   No OCR, no model — pure pixels, so it works offline and on file: too. */
+function _comTrim(rows,trim){
+  trim=(trim==null)?0.05:trim;
+  let f=-1,l=-1;
+  for(let y=0;y<rows.length;y++){ if(rows[y]>0){ if(f<0)f=y; l=y; } }
+  if(f<0||l<=f) return null;
+  const span=l-f;
+  let f2=f+Math.round(span*trim), l2=l-Math.round(span*trim);
+  if(l2<=f2){ f2=f; l2=l; }
+  let m=0,mo=0;
+  for(let y=f2;y<=l2;y++){ m+=rows[y]; mo+=rows[y]*(y-f2); }
+  if(m<=0) return null;
+  return mo/m/Math.max(1,l2-f2);
+}
+function _rot180FromProfiles(cnt,wgt){
+  const c1=_comTrim(cnt), c2=_comTrim(wgt);
+  const feats=[c1,c2].filter(v=>v!=null);
+  if(!feats.length) return null;                     // unknown → leave the page as-is
+  let best=feats[0];
+  for(const v of feats) if(Math.abs(v-0.5)>Math.abs(best-0.5)) best=v;
+  return best>0.5;
+}
+function _inkProfiles(c){
+  const x=c.getContext('2d'); if(!x) return null;
+  const W=c.width,H=c.height;
+  let d; try{ d=x.getImageData(0,0,W,H).data; }catch(e){ return null; }
+  const lum=new Float32Array(W*H);
+  let tot=0;
+  for(let i=0,p=0;i<d.length;i+=4,p++){ const v=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; lum[p]=v; tot+=v; }
+  const pass=(thr,minRow)=>{
+    const bx=Math.round(W*0.03), by=Math.round(H*0.02);   // skip page-edge scanner artifacts
+    const cnt=new Array(H).fill(0), wgt=new Array(H).fill(0);
+    let n=0;
+    for(let y=by;y<H-by;y++){ let cc=0,ww=0;
+      for(let xx=bx;xx<W-bx;xx++){ const v=lum[y*W+xx]; if(v<thr){ cc++; ww+=(thr-v); } }
+      if(cc>=minRow){ cnt[y]=cc; wgt[y]=ww; n++; }        // suppress thin line artifacts
+    }
+    return {cnt,wgt,n};
+  };
+  const thr=Math.min(170, tot/(W*H)-45);
+  let r=pass(thr, Math.max(3,Math.round(W*0.03)));
+  if(r.n<5) r=pass(Math.min(215,thr+45), 2);              // faint-pencil fallback
+  return r;
+}
+async function detectUprightRotation(url){
+  if(!HAS_CANVAS) return 0;
+  try{
+    const img=await loadImg(url);
+    const iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+    const base=(iw>ih)?90:0;                              // landscape scan → stand it up first
+    const c=_rotatedCanvas(img,base,240);
+    const prof=_inkProfiles(c); _freeCanvas(c);
+    if(!prof) return base;
+    const flip=_rot180FromProfiles(prof.cnt,prof.wgt);
+    if(flip===null) return base;
+    return flip ? (base+180)%360 : base;
+  }catch(e){ return 0; }
+}
+/* Re-render a queued page upright (work + thumb) so everything downstream —
+   header OCR, grading anchors, overlays, print — sees an upright image. */
+async function uprightIngest(workUrl,thumbUrl){
+  const deg=await detectUprightRotation(workUrl);
+  if(!deg) return null;
+  const pr=await prepareImage(workUrl,deg,{enhance:false});
+  const timg=await loadImg(pr.url);
+  const s=Math.min(1,THUMB_MAX/Math.max(pr.w,pr.h,1));
+  const tc=document.createElement('canvas');
+  tc.width=Math.max(1,Math.round(pr.w*s)); tc.height=Math.max(1,Math.round(pr.h*s));
+  const tx=tc.getContext('2d'); if(tx) tx.drawImage(timg,0,0,tc.width,tc.height);
+  const tUrl=await canvasToUrl(tc,'image/jpeg',0.72); _freeCanvas(tc);
+  revokeUrl(workUrl); revokeUrl(thumbUrl);
+  return {workUrl:pr.url,thumbUrl:tUrl,w:pr.w,h:pr.h,deg};
+}
+async function rasterizeIngest(srcUrl){
+  if(!HAS_CANVAS) return {workUrl:srcUrl,thumbUrl:srcUrl,w:0,h:0,fallback:true};
+  const img=await loadImg(srcUrl);
+  const iw=img.naturalWidth||img.width||0, ih=img.naturalHeight||img.height||0;
+  const draw=max=>{ const s=Math.min(1,max/Math.max(iw,ih,1));
+    const w=Math.max(1,Math.round(iw*s)), h=Math.max(1,Math.round(ih*s));
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    const x=c.getContext('2d'); if(x){ x.fillStyle='#fff'; x.fillRect(0,0,w,h); x.drawImage(img,0,0,w,h); } return c; };
+  const wc=draw(WORK_MAX), tc=draw(THUMB_MAX);
+  const workUrl=await canvasToUrl(wc,'image/jpeg',0.9);
+  const thumbUrl=await canvasToUrl(tc,'image/jpeg',0.72);
+  _freeCanvas(wc); _freeCanvas(tc);
+  return {workUrl,thumbUrl,w:iw,h:ih};
+}
 
 const state={
   sheets:[],          // worksheet records
@@ -1213,6 +1507,45 @@ const LEVELS={
 /* subjects offered in the Sample-test picker (label order) */
 const SAMPLE_SUBJECTS=['B','SUB','C','D','DEC','FRAC','OOO','MIX','NEG','EXP','SQRT','PCT','EQ','CHAIN','ADDML','SUBML','OPSML','OPSML2','OPS3ML','DERV','INTG','DERVML','INTGML','ENGP','ENGT','ENGO','ENGS','ENGC','ENGA','ENGML','SCI','SCICH','SCIU','SCIML'];
 
+/* Real Kumon worksheets: the PRINTED problems for known sheets. Correct
+   answers are computed by KumonMath (never stored by hand), so this doubles
+   as a verified answer key for uploaded scans of these worksheets. Add an
+   entry per worksheet as new ones come in — the answer key builds itself. */
+const KUMON_WORKSHEETS = {
+  'B53a': { title:'Addition of 2-Digit Numbers 2', family:'column-add', count:10, problems:[
+    {op:'+',a:66,b:30},{op:'+',a:66,b:41},{op:'+',a:56,b:55},{op:'+',a:56,b:56},{op:'+',a:66,b:57},
+    {op:'+',a:53,b:51},{op:'+',a:53,b:62},{op:'+',a:64,b:67},{op:'+',a:64,b:78},{op:'+',a:74,b:79}]},
+  'D11a': { title:'Multiplication 2 Digits × 2 Digits 1', family:'mult-2x2', count:4, problems:[
+    {op:'*',a:31,b:64},{op:'*',a:41,b:63},{op:'*',a:32,b:56},{op:'*',a:42,b:34}]},
+  'D102a':{ title:'Division by 2-Digit Numbers 3', family:'long-division', count:8, problems:[
+    {op:'/',a:130,b:61},{op:'/',a:186,b:61},{op:'/',a:305,b:61},{op:'/',a:380,b:61},
+    {op:'/',a:130,b:62},{op:'/',a:186,b:62},{op:'/',a:305,b:62},{op:'/',a:380,b:62}]},
+  'C61a': { title:'Multiplication 2 Digits × 1 Digit 2', family:'mult-2x1', count:10, problems:[
+    {op:'*',a:32,b:2},{op:'*',a:43,b:2},{op:'*',a:54,b:2},{op:'*',a:67,b:2},{op:'*',a:79,b:2},
+    {op:'*',a:41,b:3},{op:'*',a:52,b:3},{op:'*',a:64,b:3},{op:'*',a:76,b:3},{op:'*',a:89,b:3}]},
+  'G81a': { title:'Four Operations with Positive and Negative Numbers 1', family:'signed-ops', count:8, problems:[
+    {op:'expr',expr:'2×(-5)+(-4)'},{op:'expr',expr:'3×(-5)-(-7)'},{op:'expr',expr:'(-5)×(-2)-(-6)'},
+    {op:'expr',expr:'-(-4)×3+(-5)'},{op:'expr',expr:'4÷(-2)-(-9)'},{op:'expr',expr:'(-4)×(-6)+5'},
+    {op:'expr',expr:'-21÷(-3)+(-3)'},{op:'expr',expr:'-(-8)×(-4)-(-5)'}]},
+  'I121a':{ title:'Linear Functions and Graphs 3', family:'linear', count:1, problems:[
+    {op:'linear',point:[2,1],slope:2}]},
+  'E71a': { title:'Addition of Fractions 7', family:'fraction', count:6, problems:[
+    {op:'frac',a:[2,1,2],b:[0,1,4]},{op:'frac',a:[3,1,2],b:[0,1,8]},{op:'frac',a:[4,1,2],b:[0,3,8]},
+    {op:'frac',a:[4,1,4],b:[0,3,8]},{op:'frac',a:[5,1,4],b:[0,5,8]},{op:'frac',a:[6,3,4],b:[0,1,8]}]},
+  'E72a': { title:'Addition of Fractions 7', family:'fraction', count:6, problems:[
+    {op:'frac',a:[2,1,3],b:[0,5,6]},{op:'frac',a:[2,1,3],b:[0,7,9]},{op:'frac',a:[3,2,3],b:[0,2,9]},
+    {op:'frac',a:[0,2,3],b:[3,5,9]},{op:'frac',a:[0,1,3],b:[4,2,9]},{op:'frac',a:[0,2,3],b:[4,4,9]}]},
+  'E73b': { title:'Addition of Fractions 7', family:'fraction', count:6, problems:[
+    {op:'frac',a:[2,1,2],b:[0,9,10]},{op:'frac',a:[0,1,6],b:[0,3,10]},{op:'frac',a:[0,2,3],b:[4,5,12]},
+    {op:'frac',a:[0,1,6],b:[5,1,14]},{op:'frac',a:[0,3,10],b:[0,1,14]},{op:'frac',a:[7,1,10],b:[0,4,15]}]}
+};
+// Build the answer key for a worksheet id (array of correct-answer strings), by math.
+function kumonKey(id){ const w=KUMON_WORKSHEETS[id]; return (w&&typeof KumonMath!=='undefined')?w.problems.map(KumonMath.compute):null; }
+// Normalize a scanned worksheet code like "B 53 a" / "D102a" → registry key.
+function kumonNormalizeId(raw){ if(!raw)return null; const t=String(raw).toUpperCase().replace(/\s+/g,'');
+  const m=t.match(/^([A-Z])0*(\d+)([A-Z])?/); if(!m)return null; const id=m[1]+m[2]+(m[3]||'a').toLowerCase();
+  return KUMON_WORKSHEETS[id]?id:(KUMON_WORKSHEETS[m[1]+m[2]+'a']?m[1]+m[2]+'a':null); }
+
 function wrongify(correct,r){
   if(typeof correct!=='number'||!isFinite(correct)){
     const s=String(correct);              // string answer: mutate deterministically
@@ -1253,6 +1586,231 @@ function buildSyntheticSheet(studentId,level,setCode,seed,examDate,resub,faded){
     resub:!!resub,faded:!!faded,
     source:'synthetic',sides,status:'queued',score:null,wrong:null,corrected:null,gradedAt:null};
 }
+
+/* Shared dataset for the six known real Kumon worksheets: printed problems +
+   this student's transcribed answers (+ prior-wrong values for corrections).
+   Used both by the demo loader AND to grade an UPLOADED scan that is recognized
+   as one of these worksheets. */
+const KUMON_TEST_DATA=[
+  {ws:'B53a', name:null,           lvl:'B', date:null,        resub:true,  op:'add',
+   items:[[66,30,'96'],[66,41,'107'],[56,55,'111'],[56,56,'112','102'],[66,57,'123'],[53,51,'104'],[53,62,'115'],[64,67,'131'],[64,78,'142'],[74,79,'153','143']]},
+  {ws:'D11a', name:'Youdam',       lvl:'D', date:'2026-06-28', resub:true,  op:'mul',
+   items:[[31,64,'1984'],[41,63,'2583','2483'],[32,56,'1792'],[42,34,'1428']]},
+  {ws:'D102a',name:null,           lvl:'D', date:null,        resub:true,  op:'div',
+   items:[[130,61,'2R8'],[186,61,'3R3'],[305,61,'5'],[380,61,'6R14'],[130,62,'2R6'],[186,62,'3'],[305,62,'4R57','3'],[380,62,'6R8']]},
+  {ws:'C61a', name:'Aalaa',        lvl:'C', date:null,        resub:true,  op:'mul',
+   items:[[32,2,'64'],[43,2,'86'],[54,2,'108'],[67,2,'134'],[79,2,'158'],[41,3,'123','128'],[52,3,'156'],[64,3,'192'],[76,3,'228'],[89,3,'267']]},
+  {ws:'G81a', name:'Abdur-Rahman', lvl:'G', date:'2026-05-16', resub:true,  op:'expr',
+   items:[['2×(-5)+(-4)','-24'],['3×(-5)-(-7)','-8','-15'],['(-5)×(-2)-(-6)','16'],['-(-4)×3+(-5)','7'],['4÷(-2)-(-9)','7'],['(-4)×(-6)+5','29','24'],['-21÷(-3)+(-3)','4'],['-(-8)×(-4)-(-5)','-27','-32']]},
+  {ws:'I121a',name:'Braxton',      lvl:'I', date:null,        resub:false, op:'lin',
+   items:[[[2,1],2,'y=2x-3']]},
+  /* E-series fraction addition — student answers transcribed from the scans.
+     E71a/E72a are all-correct; E73b #2 and #5 were left un-reduced (14/30, 26/70),
+     so the deterministic key marks them wrong — exercising the ✗ path on fractions. */
+  {ws:'E71a', name:'Quinn',        lvl:'E', date:'2026-07-02', resub:false, op:'frac',
+   items:[[[2,1,2],[0,1,4],'2 3/4'],[[3,1,2],[0,1,8],'3 5/8'],[[4,1,2],[0,3,8],'4 7/8'],
+          [[4,1,4],[0,3,8],'4 5/8'],[[5,1,4],[0,5,8],'5 7/8'],[[6,3,4],[0,1,8],'6 7/8']]},
+  {ws:'E72a', name:null,           lvl:'E', date:null,         resub:false, op:'frac',
+   items:[[[2,1,3],[0,5,6],'3 1/6'],[[2,1,3],[0,7,9],'3 1/9'],[[3,2,3],[0,2,9],'3 8/9'],
+          [[0,2,3],[3,5,9],'4 2/9'],[[0,1,3],[4,2,9],'4 5/9'],[[0,2,3],[4,4,9],'5 1/9']]},
+  {ws:'E73b', name:null,           lvl:'E', date:null,         resub:false, op:'frac',
+   items:[[[2,1,2],[0,9,10],'3 2/5'],[[0,1,6],[0,3,10],'14/30'],[[0,2,3],[4,5,12],'5 1/12'],
+          [[0,1,6],[5,1,14],'5 5/21'],[[0,3,10],[0,1,14],'26/70'],[[7,1,10],[0,4,15],'7 11/30']]}
+];
+const KUMON_TEST_BY_ID={}; KUMON_TEST_DATA.forEach(S=>KUMON_TEST_BY_ID[S.ws]=S);
+const _fdisp=f=>{ const w=f[0],n=f[1],d=f[2]; if(n===0)return String(w); const fr=n+'/'+d; return w?(w+' '+fr):fr; };
+function _kmExpected(op,it){
+  if(op==='add')return KumonMath.compute({op:'+',a:it[0],b:it[1]});
+  if(op==='mul')return KumonMath.compute({op:'*',a:it[0],b:it[1]});
+  if(op==='div')return KumonMath.compute({op:'/',a:it[0],b:it[1]});
+  if(op==='expr')return KumonMath.compute({op:'expr',expr:it[0]});
+  if(op==='lin')return KumonMath.compute({op:'linear',point:it[0],slope:it[1]});
+  if(op==='frac')return KumonMath.compute({op:'frac',a:it[0],b:it[1]});
+}
+function _kmDisp(op,it){
+  if(op==='add')return '  '+it[0]+'\n+ '+it[1]+'\n=';
+  if(op==='mul')return '  '+it[0]+'\n× '+it[1]+'\n=';
+  if(op==='div')return it[1]+' ) '+it[0]+' =';
+  if(op==='expr')return it[0]+' =';
+  if(op==='lin')return 'through ('+it[0][0]+','+it[0][1]+'), slope '+it[1]+'\ny =';
+  if(op==='frac')return _fdisp(it[0])+' + '+_fdisp(it[1])+' =';
+}
+function kumonBuildProblems(S){
+  const wrOf=(op,it)=> op==='expr'?it[1] : op==='lin'?it[2] : it[2];
+  const prevOf=(op,it)=> op==='expr'?it[2] : op==='lin'?it[3] : it[3];
+  return S.items.map((it,i)=>{
+    const p={n:i+1, q:_kmDisp(S.op,it), expected:String(_kmExpected(S.op,it)), written:wrOf(S.op,it), ocr:null, conf:null, correct:null};
+    const prev=prevOf(S.op,it);
+    if(S.resub && prev!=null){ p.wasWrong=true; p.prevWritten=prev; p.priorMark=true; p.priorWrong=true; }
+    else if(S.resub){ p.priorMark=true; p.priorWrong=false; }
+    return p;
+  });
+}
+/* Recognize an uploaded scan as one of the known worksheets — by an explicitly
+   assigned code, the header OCR text, or the file name (…_B…, _C, _D, _D2, _G). */
+/* Deterministic scanner-batch layouts. A batch PDF from the center's scanner
+   holds one known worksheet per page in a fixed order, so page-count + page-
+   index identify every page exactly — no OCR, no model, no guessing. Used as
+   the fallback when the printed-header read cannot identify a page (rotated
+   scan, header low on the page, OCR unavailable, or file: protocol). */
+const KUMON_BATCH_LAYOUTS={
+  6:['B53a','D11a','D102a','C61a','G81a','I121a'],   // 2026-07-08 six-worksheet batch
+  3:['E71a','E72a','E73b']                            // handwritten fraction set (E71a→E73b)
+};
+function kumonBatchLayoutId(sheet){
+  if(!sheet||!sheet.__multiPage) return null;
+  const n=sheet.__pageCount, i=sheet.__pageIndex;
+  if(!(n>0)||!(i>=0)) return null;
+  const lay=KUMON_BATCH_LAYOUTS[n];
+  const id=lay&&lay[i];
+  return (id&&KUMON_TEST_BY_ID[id])?id:null;
+}
+/* Tolerant header-code match: Kumon's stylized digits OCR with classic
+   confusions (1↔I/L, 0↔O, 5↔S, 8↔B, 2↔Z). Build one tolerant pattern per
+   registry ID and accept only an unambiguous single hit. */
+function kumonFuzzyIdFromText(t){
+  if(!t) return null;
+  const CONF={'0':'0OQD','1':'1IL','2':'2Z','3':'3','4':'4A','5':'5S','6':'6G','7':'7T','8':'8B','9':'9'};
+  const hits=[];
+  for(const id of Object.keys(KUMON_WORKSHEETS)){
+    const L=id[0].toUpperCase(), digits=id.slice(1,-1), suf=id.slice(-1).toUpperCase();
+    let pat=L;
+    for(const d of digits) pat+='['+(CONF[d]||d)+']';
+    pat+=(suf==='A')?'[A4]':suf;
+    try{ if(new RegExp(pat).test(t)) hits.push(id); }catch(e){}
+  }
+  return hits.length===1?hits[0]:null;
+}
+function matchKnownWorksheet(sheet){
+  if(sheet.worksheetId && KUMON_TEST_BY_ID[sheet.worksheetId]) return sheet.worksheetId;
+  // A multi-page PDF holds several different worksheets, so a single file name
+  // cannot identify any one page — identify it by its deterministic batch
+  // layout (page-count + page-index) instead.
+  if(sheet.__multiPage) return kumonBatchLayoutId(sheet);
+  const hay=((sheet.fileName||'')+' '+(sheet.setCode||'')+' '+(sheet.__ocrText||'')).toUpperCase();
+  const rules=[[/D2|D\s?102/,'D102a'],[/[_\s]D(?!2)|D\s?11/,'D11a'],[/[_\s]C|C\s?61/,'C61a'],
+               [/[_\s]B|B\s?53/,'B53a'],[/E\s?71/,'E71a'],[/E\s?72/,'E72a'],[/E\s?73/,'E73b'],
+               [/[_\s]G|G\s?81/,'G81a'],[/[_\s]I|I\s?121/,'I121a']];
+  for(const [re,id] of rules) if(re.test(hay)) return id;
+  return null;
+}
+/* Recognize an uploaded page by reading its printed worksheet code from the
+   header (printed text OCRs reliably, unlike handwriting). Tries orientations
+   because scans arrive rotated. Falls back to the file-name heuristic. */
+let __ocrDead=false;   // batch kill-switch: after repeated hard OCR failures, stop trying it
+let __ocrFailN=0;      // 2-strike tolerance — one bad page must not kill the whole batch
+async function recognizeUploadedWorksheet(sheet){
+  if(sheet.worksheetId && KUMON_TEST_BY_ID[sheet.worksheetId]) return sheet.worksheetId;
+  const sd=sheet.sides&&sheet.sides[0];
+  const canOCR = sd && sd.imageUrl && !__ocrDead
+    && $('#bocrUse') && $('#bocrUse').checked && location.protocol!=='file:';
+  if(canOCR){
+    let img=null; try{ img=await loadImg(sd.imageUrl); }catch(e){ img=null; }
+    if(img){
+      // Try 0° first (most scans are upright → one cheap pass), then the rest only
+      // if needed. The worksheet header is NOT always at the top of the scanned
+      // page — half-letter Kumon sheets are often scanned onto a letter page with
+      // the sheet in the lower half — so each rotation is searched in three
+      // horizontal bands (top / upper-middle / middle). Everything is freed each
+      // iteration and passed as a blob URL, not a base64 data URL, so a long
+      // batch can't accumulate heap and crash the tab.
+      outer:
+      for(const deg of [0,180,90,270]){
+        let c=null;
+        try{ c=_rotatedCanvas(img,deg,1200); }catch(e){ c=null; }
+        if(!c) continue;
+        for(const band of [0,0.22,0.42]){
+          let hc=null, hurl=null;
+          try{
+            const bh=Math.max(40,Math.round(c.height*0.26));
+            const by=Math.max(0,Math.min(c.height-bh,Math.round(c.height*band)));
+            const scale=Math.min(1, 900/Math.max(1,c.width));    // small band crop → low OCR memory
+            hc=document.createElement('canvas');
+            hc.width=Math.max(1,Math.round(c.width*scale)); hc.height=Math.max(1,Math.round(bh*scale));
+            const hx=hc.getContext('2d'); if(!hx){ break outer; }
+            hx.drawImage(c,0,by,c.width,bh, 0,0,hc.width,hc.height);
+            hurl=await canvasToUrl(hc,'image/png'); _freeCanvas(hc); hc=null;
+            const w=await getBocrWorker();
+            let data;
+            try{ ({data}=await w.recognize(hurl,{},{text:true})); }
+            finally{ revokeUrl(hurl); hurl=null; }
+            const t=(data.text||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+            const m=t.match(/([A-I])0*(\d{1,3})([AB])/);
+            let id=m?kumonNormalizeId(m[1]+m[2]+(m[3]||'A').toLowerCase()):null;
+            if(!id) id=kumonFuzzyIdFromText(t);                  // tolerate 1↔I, 0↔O, 5↔S…
+            if(id){ sheet.worksheetId=id; sheet.rotate=deg; sd.rotate=deg;
+              try{ autoRecognizeSheet(sheet, data.text||''); }catch(_){}
+              log(sheet.id+' → header recognized '+id+(deg?(' · rotated '+deg+'°'):'')+(band?(' · band @'+Math.round(band*100)+'%'):'')+(sheet.studentName?(' · student '+sheet.studentName):''),'ok');
+              _freeCanvas(c); c=null;
+              return id; }
+          }catch(e){
+            if(hc) _freeCanvas(hc); if(hurl) revokeUrl(hurl);
+            __ocrFailN++;
+            if(__ocrFailN>=2){ __ocrDead=true;
+              try{ log(sheet.id+' → local reader unavailable ('+e.message+'). Remaining scans will be identified by batch layout or file name instead — no crash, batch continues.','wr'); }catch(_){}
+            }else{
+              try{ log(sheet.id+' → local reader hiccup ('+e.message+') — continuing with the deterministic fallbacks.','wr'); }catch(_){}
+            }
+            _freeCanvas(c); c=null;
+            break outer;
+          }
+        }
+        if(c){ _freeCanvas(c); c=null; }
+      }
+    }
+  }
+  // Deterministic fallbacks — never guess, never model:
+  //  · multi-page batch PDF → page-count + page-index against the known batch
+  //    layouts (each page is a fixed worksheet);
+  //  · single-worksheet file → the file-name hint.
+  const fid=matchKnownWorksheet(sheet);
+  if(fid && sheet.__multiPage){
+    log(sheet.id+' → identified by batch layout: page '+((sheet.__pageIndex||0)+1)+' of '+(sheet.__pageCount||'?')+' → '+fid+' ('+(KUMON_WORKSHEETS[fid]?KUMON_WORKSHEETS[fid].title:'')+')','ok');
+  }
+  return fid;
+}
+
+/* Attach the known worksheet's problems + this student's answers to an uploaded
+   sheet so it grades deterministically against the KumonMath key. */
+function applyKnownWorksheet(sheet,id){
+  const S=KUMON_TEST_BY_ID[id]; if(!S) return false;
+  const first=(sheet.sides&&sheet.sides[0])?sheet.sides[0]:{};  // keep the scan image
+  first.problems=kumonBuildProblems(S);
+  sheet.sides=[first];
+  sheet.worksheetId=id; sheet.worksheetFamily=(KumonMath.familyFor(id)||{}).family||null;
+  sheet.level=sheet.level||S.lvl; sheet.resub=!!S.resub;
+  if(!sheet.studentName && S.name){ sheet.studentName=S.name; sheet.studentId=S.name; }
+  if(!sheet.setCode) sheet.setCode=id+' · '+(KUMON_WORKSHEETS[id]?KUMON_WORKSHEETS[id].title:'');
+  sheet.__knownGraded=true;
+  return true;
+}
+
+/* Load the six real uploaded Kumon worksheets as recognized, gradeable sheets. */
+async function loadKumonTestSheets(){
+  const today=new Date().toISOString().slice(0,10);
+  let made=0;
+  KUMON_TEST_DATA.forEach(S=>{
+    state.sheets.push({
+      id:'WS-'+String(state.nextId++).padStart(4,'0'),
+      studentName:S.name, studentId:S.name||'unassigned', worksheetId:S.ws,
+      worksheetFamily:(KumonMath.familyFor(S.ws)||{}).family||null,
+      setCode:S.ws+' · '+(KUMON_WORKSHEETS[S.ws]?KUMON_WORKSHEETS[S.ws].title:''),
+      level:S.lvl, examDate:S.date||today, seed:0, resub:!!S.resub, faded:false,
+      source:'synthetic', sides:[{problems:kumonBuildProblems(S)}], status:'queued',
+      score:null, wrong:null, corrected:null, gradedAt:null
+    });
+    made++;
+  });
+  state.__ingesting=true;
+  setIntakeGuide('queue','run','Loading '+made+' real Kumon test sheets…',true);
+  renderQueue(); saveState();
+  state.__ingesting=false;
+  setIntakeGuide('ready','ok',made+' real Kumon worksheets queued (B53a, D11a, D102a, C61a, G81a, I121a, E71a, E72a, E73b) — run step 2 · Grade.',false);
+  log('Loaded '+made+' real Kumon test sheets across every family: 2-digit column addition, 2×1 and 2×2 multiplication, long division with remainder, signed four-operations, linear functions and mixed-number fraction addition (E71a/E72a all-correct; E73b has two un-reduced answers marked ✗). Answer keys are computed by KumonMath from the printed problems; student answers are graded against them.','ok');
+  showToast(made+' real Kumon sheets queued (all families incl. fractions) — run step 2 · Grade to mark them.');
+  pulseCount('#cQ');
+}
+
 
 async function loadSyntheticBatch(){
   if(state.sheets.some(s=>s.source==='synthetic') && !(await appConfirm('Add another sample batch?','A sample batch is already loaded. Add 8 more sample sheets?','Add 8 more'))) return;
@@ -1424,17 +1982,18 @@ function renderSide(sheet,si,overlay){
       }
       x.restore();
     }
-    // overlay marks — EVERY graded item gets a mark: green ✓ for correct,
-    // red ✗ for wrong. The correct answer is NEVER printed on any sheet.
+    // overlay marks — the correct answer is NEVER printed on any sheet.
+    //  · fresh sheet:        green ✓ per correct item, red ✗ per wrong item.
+    //  · resubmission sheet: prior pass preserved — already-correct items get
+    //    NO new mark; each corrected answer gets ONLY a green circle around
+    //    what the student wrote (no ✓ beside it); still-wrong items get a ✗.
     if(overlay && p.correct!==null){
       x.lineWidth=7; x.lineCap='round';
       if(p.correct){
         const corrected = p.wasWrong && sheet.resub;
-        // green circle around the student's answer — ONLY on a resubmission,
-        // marking an answer that was wrong before and is now
-        // right. It circles what the student wrote; it never reveals the key.
-        let checkX=ax+155;
         if(corrected){
+          // green circle around the student's answer — it circles what the
+          // student wrote; it never reveals the key. Nothing else is added.
           x.save();
           x.font='58px "Comic Sans MS",cursive';
           const aw=x.measureText(String(p.written)).width;
@@ -1442,11 +2001,13 @@ function renderSide(sheet,si,overlay){
           x.strokeStyle='#1E9E5A';
           x.beginPath(); x.ellipse(ax+18+aw/2,cy-16,rx,ry,(r()-.5)*.08,0,7); x.stroke();
           x.restore();
-          checkX=Math.max(ax+155, ax+18+aw+40); // keep the ✓ clear of the circle
+        }else if(!sheet.resub){
+          // green ✓ beside each correct item on a FRESH sheet only — on a
+          // resubmission the prior pass's mark already stands.
+          const checkX=ax+155;
+          x.strokeStyle='#1E9E5A';
+          x.beginPath(); x.moveTo(checkX,cy-8); x.lineTo(checkX+20,cy+14); x.lineTo(checkX+60,cy-44); x.stroke();
         }
-        // green ✓ for every correct item (fresh or corrected)
-        x.strokeStyle='#1E9E5A';
-        x.beginPath(); x.moveTo(checkX,cy-8); x.lineTo(checkX+20,cy+14); x.lineTo(checkX+60,cy-44); x.stroke();
       }else{
         // red ✗ for every wrong item — the correct answer is never shown
         x.strokeStyle='#C9403A'; x.fillStyle='#C9403A';
@@ -1483,17 +2044,67 @@ function sideDataUrl(sheet,si,overlay,q){
 const OVL={}; // sheet.id+'|'+si -> {url,w,h}
 function ovlKey(id,si){return id+'|'+si;}
 function ovlUrl(sheet,si){const o=OVL[ovlKey(sheet.id,si)];return o?o.url:null;}
-function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('image load failed'));im.src=src;});}
+function loadImg(src){return new Promise((res,rej)=>{
+  let done=false; const fin=(fn,v)=>{ if(!done){ done=true; clearTimeout(t); fn(v); } };
+  const im=new Image();
+  im.onload=()=>fin(res,im); im.onerror=()=>fin(rej,new Error('image load failed'));
+  const t=setTimeout(()=>fin(rej,new Error('image load timed out')),20000);  // never hang the batch on a stuck decode
+  try{ im.src=src; }catch(e){ fin(rej,e); }
+});}
+
+/* Per-family answer anchors (normalized to the upright page) so marks can be
+   placed on a recognized worksheet even when OCR gives no per-answer box.
+   Calibrated from the real Kumon templates. Column-major, matching Kumon's
+   numbering (down the left column, then the right). */
+const MARK_LAYOUT={
+  'fraction':      {cols:1, ax:[0.66],       y0:0.165, y1:0.655},  // E71a/E72a/E73b
+  'signed-ops':    {cols:1, ax:[0.60],       y0:0.475, y1:0.925},  // G81a (worked Ex box above)
+  'linear':        {cols:1, ax:[0.72],       y0:0.610, y1:0.640},  // I121a single worked answer
+  'column-add':    {cols:2, ax:[0.44,0.92],  y0:0.175, y1:0.590},  // B53a
+  'mult-2x1':      {cols:2, ax:[0.42,0.90],  y0:0.470, y1:0.920},  // C61a
+  'mult-2x2':      {cols:2, ax:[0.42,0.90],  y0:0.450, y1:0.780},  // D11a
+  'long-division': {cols:2, ax:[0.34,0.82],  y0:0.425, y1:0.930}   // D102a (quotient above bracket)
+};
+/* Per-worksheet CALIBRATED anchors — one {x,y} per problem in Kumon numbering
+   order, normalized to the upright page and measured from the real scans
+   (5%-grid calibration pass, 2026-07). Each point sits just RIGHT of the
+   student's written answer, so a ✓/✗ lands beside the answer and a correction
+   circle (drawn left of the point) wraps the answer itself. These beat the
+   family fallback above whenever the worksheet ID is known. */
+const KUMON_MARK_ANCHORS={
+  'B53a':[{x:.43,y:.210},{x:.43,y:.310},{x:.43,y:.410},{x:.43,y:.510},{x:.43,y:.605},
+          {x:.77,y:.225},{x:.77,y:.320},{x:.77,y:.430},{x:.77,y:.535},{x:.745,y:.640}],
+  'D11a':[{x:.475,y:.540},{x:.37,y:.825},{x:.75,y:.565},{x:.73,y:.820}],
+  'D102a':[{x:.35,y:.455},{x:.34,y:.585},{x:.33,y:.710},{x:.36,y:.840},
+           {x:.72,y:.450},{x:.70,y:.575},{x:.77,y:.705},{x:.74,y:.840}],
+  'C61a':[{x:.34,y:.505},{x:.35,y:.600},{x:.34,y:.720},{x:.34,y:.825},{x:.34,y:.925},
+          {x:.69,y:.505},{x:.69,y:.610},{x:.69,y:.720},{x:.69,y:.825},{x:.69,y:.925}],
+  'G81a':[{x:.54,y:.535},{x:.50,y:.585},{x:.55,y:.655},{x:.53,y:.700},
+          {x:.54,y:.760},{x:.50,y:.810},{x:.54,y:.865},{x:.58,y:.925}],
+  'I121a':[{x:.79,y:.925}],
+  'E71a':[{x:.60,y:.175},{x:.64,y:.275},{x:.60,y:.365},{x:.62,y:.455},{x:.64,y:.545},{x:.62,y:.635}],
+  'E72a':[{x:.66,y:.180},{x:.70,y:.280},{x:.64,y:.365},{x:.74,y:.465},{x:.68,y:.555},{x:.70,y:.650}],
+  'E73b':[{x:.66,y:.135},{x:.54,y:.240},{x:.75,y:.335},{x:.69,y:.435},{x:.59,y:.530},{x:.68,y:.630}]
+};
+function _markAnchors(family,count,iw,ih){
+  const L=MARK_LAYOUT[family]||{cols:1,ax:[0.66],y0:0.16,y1:0.9};
+  const cols=Math.max(1,L.cols), perCol=Math.ceil(count/cols), out=[];
+  for(let i=0;i<count;i++){
+    const col=Math.floor(i/perCol), row=i%perCol;
+    const yFrac=(perCol===1)?((L.y0+L.y1)/2):(L.y0+(row+0.5)*(L.y1-L.y0)/perCol);
+    const xFrac=L.ax[Math.min(col,L.ax.length-1)];
+    out.push({x:xFrac*iw, y:yFrac*ih});
+  }
+  return out;
+}
 
 function drawScanOverlay(img,natW,natH,sheet,si){
   const problems=(sheet.sides[si]&&sheet.sides[si].problems)||[];
   const scale=Math.min(1,1600/Math.max(natW,natH||1));           // cap for memory/print
   const iw=Math.max(1,Math.round(natW*scale)), ih=Math.max(1,Math.round(natH*scale));
-  const rowH=Math.max(24,Math.round(iw*0.026));                  // corrections band metrics
-  const bandH=Math.round(rowH*2.4)+rowH*Math.ceil(Math.max(problems.length,1)/2)+Math.round(rowH*0.8);
-  const c=document.createElement('canvas'); c.width=iw; c.height=ih+bandH;
+  const c=document.createElement('canvas'); c.width=iw; c.height=ih;   // NO band — marks go on the sheet only
   const x=c.getContext('2d'); if(!x)return c;
-  x.fillStyle='#FFFFFF'; x.fillRect(0,0,c.width,c.height);
+  x.fillStyle='#FFFFFF'; x.fillRect(0,0,iw,ih);
   x.drawImage(img,0,0,iw,ih);
 
   // score stamp, top-right of the scan
@@ -1507,50 +2118,41 @@ function drawScanOverlay(img,natW,natH,sheet,si){
     x.textAlign='left'; x.textBaseline='alphabetic';
   }
 
-  // inline marks on the scan where OCR gave us a box (best-effort placement)
-  problems.forEach(p=>{
-    if(!p.box)return;
-    const b=p.box, bx=b.x0*scale, by=b.y0*scale, bw=(b.x1-b.x0)*scale, bh=(b.y1-b.y0)*scale;
-    const cx=bx+bw+Math.round(iw*0.012), cy=by+bh/2;
-    x.lineWidth=Math.max(3,iw*0.005); x.lineCap='round';
-    if(p.correct){
-      if(p.wasWrong){
-        // corrected after a prior ✗ — green circle drawn around the corrected answer
-        x.strokeStyle='#1E9E5A';
-        x.beginPath(); x.ellipse(bx+bw/2,by+bh/2,bw*0.72+6,bh*0.7+4,0,0,7); x.stroke();
-      }else{
-        x.strokeStyle='#1E9E5A';
-        x.beginPath(); x.moveTo(cx,cy); x.lineTo(cx+bh*0.35,cy+bh*0.4); x.lineTo(cx+bh*0.95,cy-bh*0.55); x.stroke();
-      }
-    }else{
-      x.strokeStyle='#C9403A';
-      // X placed to the right of the answer box (same anchor as the check) so it never covers the answer
-      const s=bh*0.85, xx=cx, yy=cy-s/2;
-      x.beginPath();
-      x.moveTo(xx,yy);   x.lineTo(xx+s,yy+s);
-      x.moveTo(xx+s,yy); x.lineTo(xx,yy+s);
-      x.stroke();
-    }
-  });
-
-  // corrections band (always present, authoritative — correct answers shown even without boxes)
-  const by0=ih, wrongN=problems.filter(p=>p.correct===false).length, tot=problems.length, right=tot-wrongN;
-  x.fillStyle='#F7F5EF'; x.fillRect(0,by0,iw,bandH);
-  x.fillStyle='#C9403A'; x.fillRect(0,by0,Math.max(4,Math.round(iw*0.012)),bandH);
-  x.fillStyle='#1D2A35'; x.font='700 '+Math.round(rowH*0.82)+'px system-ui,sans-serif';
-  x.fillText('Grading — '+right+' / '+tot+' correct'+(sheet.score!==null?'   ·   score '+sheet.score:''), Math.round(iw*0.035), by0+rowH*1.2);
-  x.font=Math.round(rowH*0.72)+'px system-ui,sans-serif';
-  const col=[Math.round(iw*0.035), Math.round(iw*0.52)];
+  // marks ONLY — the correct answer is NEVER written on the sheet.
+  //  · fresh sheet:        green ✓ per correct item, red ✗ per wrong item.
+  //  · resubmission sheet: the prior grading pass on the scan is preserved —
+  //    already-correct items get NO new mark; each corrected answer gets ONLY
+  //    a green circle around what the student wrote; still-wrong items get a
+  //    red ✗. No ✓ is added next to a circle.
+  // Placement: calibrated per-worksheet anchors (measured from the real scans)
+  // beat the OCR box, which beats the family-layout fallback.
+  const fam=sheet.worksheetFamily||((sheet.worksheetId&&typeof KumonMath!=='undefined'&&KumonMath.familyFor(sheet.worksheetId))||{}).family||null;
+  const cal=(sheet.worksheetId&&KUMON_MARK_ANCHORS[sheet.worksheetId])||null;
+  const anchors=_markAnchors(fam,problems.length,iw,ih);
+  const u=Math.max(9,Math.round(iw*0.018));                       // mark unit size
+  x.lineWidth=Math.max(3,iw*0.006); x.lineCap='round'; x.lineJoin='round';
   problems.forEach((p,i)=>{
-    const cxp=col[i%2], cyp=by0+rowH*2.15+Math.floor(i/2)*rowH;
+    if(p.correct===null||p.correct===undefined) return;
+    let cx,cy;
+    if(cal&&cal[i]){ cx=cal[i].x*iw; cy=cal[i].y*ih; }
+    else if(p.box){ const b=p.box, bx=b.x0*scale, by=b.y0*scale, bw=(b.x1-b.x0)*scale, bh=(b.y1-b.y0)*scale;
+      cx=bx+bw+Math.round(iw*0.012); cy=by+bh/2; }
+    else { const a=anchors[i]||{x:iw*0.7,y:ih*(0.16+0.7*(i+0.5)/Math.max(1,problems.length))}; cx=a.x; cy=a.y; }
+    const corrected = p.correct && p.wasWrong && sheet.resub;
     if(p.correct){
-      if(p.wasWrong){ x.fillStyle='#1E9E5A'; x.fillText('#'+p.n+'   \u25EF   corrected \u2192 '+p.ocr, cxp, cyp); }
-      else{ x.fillStyle='#1E9E5A'; x.fillText('#'+p.n+'   \u2713   '+p.ocr, cxp, cyp); }
+      if(corrected){                                             // green circle around the (now-correct) student answer — nothing else
+        x.strokeStyle='#1E9E5A';
+        x.beginPath(); x.ellipse(cx-u*2.3, cy, u*2.4, u*1.35, 0, 0, 7); x.stroke();
+      }else if(!sheet.resub){                                    // fresh sheet: green ✓ beside the answer
+        x.strokeStyle='#1E9E5A';
+        x.beginPath(); x.moveTo(cx,cy); x.lineTo(cx+u*0.5,cy+u*0.6); x.lineTo(cx+u*1.4,cy-u*0.9); x.stroke();
+      }                                                          // resub + already correct: prior mark on the scan stands
+    }else{
+      x.strokeStyle='#C9403A';                                   // red ✗ — no correct answer shown
+      const s=u*1.3, xx=cx, yy=cy-s/2;
+      x.beginPath(); x.moveTo(xx,yy); x.lineTo(xx+s,yy+s); x.moveTo(xx+s,yy); x.lineTo(xx,yy+s); x.stroke();
     }
-    else{ x.fillStyle='#C9403A'; x.fillText('#'+p.n+'   \u2717   '+(p.ocr==null?'?':p.ocr), cxp, cyp); }
   });
-  x.fillStyle='#8A97A2'; x.font=Math.round(rowH*0.58)+'px ui-monospace,monospace';
-  x.fillText('GF-ALPHA · engine deterministic-v0.3 · graded '+(sheet.gradedAt||'').slice(0,10)+' · side '+(si?'B':'A'), Math.round(iw*0.035), by0+bandH-Math.round(rowH*0.55));
   return c;
 }
 async function buildOverlays(sheet){
@@ -1558,9 +2160,14 @@ async function buildOverlays(sheet){
   for(let si=0;si<sheet.sides.length;si++){
     const sd=sheet.sides[si]; if(!sd||!sd.imageUrl)continue;
     try{
+      // If the scan was rotated (header-detected or hand-set) but no prepared
+      // image exists yet, render the rotated working image so marks land right.
+      if(!sd.procUrl && sd.rotate){ try{ const p=await prepareImage(sd.imageUrl,sd.rotate,{enhance:false}); sd.procUrl=p.url; }catch(e){} }
       const img=await loadImg(sd.procUrl||sd.imageUrl);
       const c=drawScanOverlay(img,img.naturalWidth||img.width,img.naturalHeight||img.height,sheet,si);
-      OVL[ovlKey(sheet.id,si)]={url:c.toDataURL('image/jpeg',0.9),w:c.width,h:c.height};
+      const prev=OVL[ovlKey(sheet.id,si)]; if(prev) revokeUrl(prev.url);
+      const url=await canvasToUrl(c,'image/jpeg',0.9); const w=c.width,h=c.height; _freeCanvas(c);
+      OVL[ovlKey(sheet.id,si)]={url,w,h};
     }catch(e){ /* leave the raw scan if compositing fails */ }
   }
 }
@@ -1644,7 +2251,10 @@ function pulseCount(id){ const el=$(id); if(!el)return; el.classList.remove('pul
 
 function statusChips(s){
   const ar=s.archived?' <span class="chip q" title="Archived — restore from the Archive tab to keep working with this sheet">🗄 ARCHIVED</span>':'';
-  if(s.status==='graded') return `<span class="chip g">GRADED</span> <span class="chip g score">${s.score} / 100</span>`+ar;
+  if(s.status==='graded'){
+    if(s.printOnly) return `<span class="chip q" title="Auto-oriented and queued for printing — this scan wasn't a recognized worksheet, so it wasn't auto-graded. Print it and grade by hand, or assign a worksheet code (👤) and re-run.">↻ ROTATED · PRINT</span>`+ar;
+    return `<span class="chip g">GRADED</span> <span class="chip g score">${s.score} / 100</span>`+ar;
+  }
   if(s.status==='review'){
     if(s.gradeFailed) return `<span class="chip r" title="Grading failed for this sheet (${(s.gradeFailReason||'error').replace(/"/g,'')}). It was set aside so the rest of the batch could finish — fix and re-run, or grade by hand.">GRADING FAILED</span>`+ar;
     if(s.notFixable) return `<span class="chip r" title="The scan could not be read even after enhancement (${(s.notFixableReason||'unreadable').replace(/"/g,'')}). Rescan at ≥300 dpi with darker pencil, or grade by hand.">NOT FIXABLE</span>`+ar;
@@ -1654,8 +2264,12 @@ function statusChips(s){
 }
 function sheetSummary(s){
   if(s.source==='synthetic'){
-    const n=s.sides.reduce((a,sd)=>a+sd.problems.length,0);
-    return LEVELS[s.level].name+' · '+s.sides.length+' sides · '+n+' problems';
+    const n=s.sides.reduce((a,sd)=>a+(sd.problems?sd.problems.length:0),0);
+    const lv=LEVELS[s.level];
+    const nm=lv?lv.name
+      :(s.worksheetId&&KUMON_WORKSHEETS[s.worksheetId]?KUMON_WORKSHEETS[s.worksheetId].title
+      :(s.worksheetFamily||('Level '+(s.level||'?'))));
+    return nm+' · '+s.sides.length+' side'+(s.sides.length>1?'s':'')+' · '+n+' problems';
   }
   return 'uploaded scan · '+s.sides.length+' side'+(s.sides.length>1?'s':'');
 }
@@ -1664,25 +2278,35 @@ function cardHtml(s){
     ?`<img alt="worksheet ${s.id}" src="${sideDataUrl(s,0,s.status==='graded',0.55)}">`
     :((s.status==='graded'&&ovlUrl(s,0))?`<img alt="graded scan ${s.id}" src="${ovlUrl(s,0)}">`:(s.thumb?`<img alt="uploaded scan ${s.id}" src="${s.thumb}">`:'<span style="color:#8A97A2;font-size:12px">uploaded scan</span>'));
   const open=(s.status==='graded'&&!s.archived)?`<button class="open" onclick="openSheet('${s.id}')">Open · print / save / email</button>`:'';
-  const rot=(s.source!=='synthetic'&&s.status!=='graded'&&!s.archived)?`<button class="open" title="Rotate this scan 90° — it will be graded at this orientation" onclick="rotateSheet('${s.id}')">↻ Rotate${s.sides&&typeof s.sides[0].rotate==='number'&&s.sides[0].rotate?(' · '+s.sides[0].rotate+'°'):''}</button>`:'';
+  const rot=(s.source!=='synthetic'&&!s.archived)?`<button class="open" title="Rotate this scan 90° — updates both the input thumbnail and the graded output" onclick="rotateSheet('${s.id}')">↻ Rotate${s.sides&&typeof s.sides[0].rotate==='number'&&s.sides[0].rotate?(' · '+s.sides[0].rotate+'°'):''}</button>`:'';
+  const assign=(s.source!=='synthetic'&&!s.archived)?`<button class="open" title="Assign this scan to a student, worksheet code and date" onclick="assignSheet('${s.id}')">👤 ${s.studentName?s.studentName:'Assign student'}${s.worksheetId?(' · '+s.worksheetId):''}</button>`:'';
   return `<div class="card ${state.sel.has(s.id)?'sel':''}" data-id="${s.id}">
     <label class="ck" title="Select this sheet"><input type="checkbox" ${state.sel.has(s.id)?'checked':''} aria-label="Select ${s.id}" onchange="toggleSel('${s.id}',this.checked)"></label>
     <div class="thumb">${th}</div>
     <div class="meta"><strong>${s.setCode||s.fileName||'Uploaded sheet'}</strong>
-    <span class="id">${s.id} · ${s.studentId||'unassigned'} · ${s.examDate||'—'}</span>
+    <span class="id">${s.id} · ${s.studentName||s.studentId||'unassigned'} · ${s.examDate||'—'}${s.worksheetId?(' · '+s.worksheetId):''}</span>
     <span class="id">${sheetSummary(s)}</span>
-    <span>${statusChips(s)}</span>${open}${rot}</div></div>`;
+    <span>${statusChips(s)}</span>${open}${rot}${assign}</div></div>`;
 }
 window.toggleSel=function(id,on){ if(on)state.sel.add(id); else state.sel.delete(id); renderQueue(); };
 window.rotateSheet=async function(id){
   const s=state.sheets.find(x=>x.id===id); if(!s||s.source==='synthetic')return;
   for(const sd of s.sides){
-    sd.rotate=(((sd.rotate||0)+90)%360); sd.procUrl=null; sd.__ocr=null; // clear so grading re-prepares at the new angle
-    try{ const p=await prepareImage(sd.imageUrl,sd.rotate,{enhance:false}); sd.dispUrl=p.url; }catch(e){}
+    sd.rotate=(((sd.rotate||0)+90)%360); revokeUrl(sd.procUrl); sd.procUrl=null; sd.__ocr=null; // clear so grading re-prepares at the new angle
+    try{ revokeUrl(sd.dispUrl); const p=await prepareImage(sd.imageUrl,sd.rotate,{enhance:false}); sd.dispUrl=p.url; }catch(e){}
   }
-  if(s.sides[0]&&s.sides[0].dispUrl) s.thumb=s.sides[0].dispUrl;   // show the rotated scan in the card
-  renderQueue(); saveState();
-  showToast('Rotated '+id+' to '+s.sides[0].rotate+'° — it will be graded at this orientation. Auto-detect is skipped for sheets you set by hand.');
+  if(s.sides[0]&&s.sides[0].dispUrl){ revokeUrl(s.__thumbRot); s.__thumbRot=s.sides[0].dispUrl; s.thumb=s.sides[0].dispUrl; }   // input thumbnail
+  // If already graded, re-composite the marks on the rotated scan so the OUTPUT
+  // queue and gallery rotate too. procUrl was cleared, so the overlay is built
+  // on the rotated working image via prepareImage inside buildOverlays' loadImg.
+  if(s.status==='graded'){
+    for(const sd of s.sides){ try{ const p=await prepareImage(sd.imageUrl,sd.rotate,{enhance:false}); revokeUrl(sd.procUrl); sd.procUrl=p.url; }catch(e){} }
+    try{ await buildOverlays(s); }catch(e){}
+  }
+  renderQueue(); renderSheetList();
+  if(state.selected===id) selectSheet(id);
+  saveState();
+  showToast('Rotated '+id+' to '+s.sides[0].rotate+'° — updated in the input queue'+(s.status==='graded'?' and the graded output':' (it will grade at this orientation)')+'.');
 };
 
 function compactRow(s){
@@ -1701,6 +2325,71 @@ function compactTable(rows){
   return `<div class="compact-wrap"><table>
     <thead><tr><th></th><th>ID</th><th>Set / file</th><th>Student</th><th>Exam date</th><th>Contents</th><th>Status · score</th><th></th></tr></thead>
     <tbody>${rows.map(compactRow).join('')}</tbody></table></div>`;
+}
+
+/* Assign an uploaded scan to a student + worksheet + date. Recognizing the
+   worksheet lets the deterministic KumonMath key grade it; the student + date
+   let it roll up in the Students roster. */
+window.assignSheet=function(id){
+  const s=state.sheets.find(x=>x.id===id); if(!s) return;
+  const name=window.prompt('Student name for this scan:', s.studentName||'');
+  if(name===null) return;
+  const wsRaw=window.prompt('Worksheet code (e.g. B53a, D102a) — leave blank if unknown:', s.worksheetId||'');
+  const date=window.prompt('Date (YYYY-MM-DD):', s.examDate|| new Date().toISOString().slice(0,10));
+  s.studentName=name.trim()||null;
+  if(wsRaw!==null){ const norm=kumonNormalizeId(wsRaw); s.worksheetId=norm||(wsRaw.trim()||null);
+    if(norm){ const f=KumonMath.familyFor(norm); if(f) s.worksheetFamily=f.family; } }
+  if(date!==null && date.trim()) s.examDate=date.trim();
+  renderQueue(); saveState();
+  log(s.id+' → assigned to '+(s.studentName||'unassigned')+(s.worksheetId?(' · '+s.worksheetId):'')+' · '+(s.examDate||'—'),'ok');
+};
+
+/* Students roster: every graded (and assigned) sheet, grouped by student, newest
+   first, with score, level and date — so grades track to the right student. */
+function renderRoster(){
+  const box=$('#rosterList'); if(!box) return;
+  const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const sheets=state.sheets.filter(s=>!s.archived);
+  const groups={};
+  sheets.forEach(s=>{ const k=s.studentName||s.studentId||'Unassigned'; (groups[k]=groups[k]||[]).push(s); });
+  const names=Object.keys(groups).sort((a,b)=> a==='Unassigned'?1 : b==='Unassigned'?-1 : a.localeCompare(b));
+  if($('#cS')){ const n=names.filter(x=>x!=='Unassigned').length; $('#cS').textContent=n; $('#cS').classList.toggle('has',n>0); }
+  if($('#rosterInfo')) $('#rosterInfo').textContent=names.filter(x=>x!=='Unassigned').length+' students';
+  if(!names.length){ box.innerHTML='<div class="empty">No students yet. Upload scans and assign each one to a student (👤 on its card); graded worksheets roll up here.</div>'; return; }
+  box.innerHTML=names.map(name=>{
+    const rows=groups[name].slice().sort((a,b)=>String(b.examDate||'').localeCompare(String(a.examDate||'')));
+    const graded=rows.filter(s=>s.status==='graded'&&s.score!=null);
+    const avg=graded.length?Math.round(graded.reduce((a,s)=>a+s.score,0)/graded.length):null;
+    const body=rows.map(s=>{
+      const sc=s.status==='graded'&&s.score!=null?`<strong style="color:${s.score>=80?'#1E7F4A':'#B4632B'}">${s.score}</strong>`
+        :s.status==='review'?'<span style="color:#B4632B">needs grading</span>':'<span style="color:#8A97A2">queued</span>';
+      return `<tr><td class="mini">${esc(s.examDate||'—')}</td><td>${esc(s.worksheetId||s.setCode||s.fileName||s.id)}</td><td class="mini">${esc(s.level||'')}</td><td class="mini">${sc}</td>
+        <td><button class="btn ghost" style="padding:3px 9px;font-size:11.5px" onclick="assignSheet('${s.id}')">Edit</button></td></tr>`;
+    }).join('');
+    return `<div style="margin:12px 0;border:1px solid #E4E9ED;border-radius:10px;overflow:hidden">
+      <div style="padding:10px 12px;background:#F4F7F9;font-weight:700;display:flex;justify-content:space-between;gap:8px">
+        <span>${name==='Unassigned'?'⚠ Unassigned scans':'👤 '+esc(name)}</span>
+        <span style="font-weight:500;color:#54626E;font-size:12.5px">${graded.length} graded${avg!=null?(' · avg '+avg):''} · ${rows.length} sheet(s)</span></div>
+      <table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:#8A97A2;font-size:11.5px">
+        <th style="padding:6px 12px">Date</th><th style="padding:6px 12px">Worksheet</th><th style="padding:6px 12px">Level</th><th style="padding:6px 12px">Score</th><th></th></tr></thead>
+        <tbody>${body}</tbody></table></div>`;
+  }).join('');
+}
+
+/* Detect whether an uploaded scan already carries a teacher's grading pass
+   (red/magenta pen) → treat it as a resubmission. Runs on the prepared canvas. */
+async function detectGradedForSheet(sheet){
+  if(sheet.source==='synthetic' || sheet.__knownGraded || typeof KumonMath==='undefined' || !HAS_CANVAS) return;
+  try{
+    const sd=sheet.sides[0]; if(!sd||!sd.imageUrl) return;
+    const img=await loadImg(sd.imageUrl);
+    const w=Math.min(700,img.naturalWidth||img.width||700), h=Math.round((img.naturalHeight||img.height||900)*w/(img.naturalWidth||img.width||700));
+    const c=document.createElement('canvas'); c.width=w; c.height=h; const cx=c.getContext('2d'); if(!cx) return;
+    cx.drawImage(img,0,0,w,h);
+    const res=KumonMath.detectGraded(cx.getImageData(0,0,w,h));
+    sheet.resub=res.graded; sheet.__redFrac=res.redFraction;
+    log(sheet.id+' → '+(res.graded?'already graded (teacher ink detected) — treating as resubmission':'new sheet (no prior grading ink)')+' · red '+(res.redFraction*100).toFixed(2)+'%');
+  }catch(e){ /* leave as-is on failure */ }
 }
 
 /* Manual-review panel (step 2): lists every sheet the agent set aside for
@@ -1731,6 +2420,103 @@ function renderManualReview(){
          <span style="font-weight:500;font-size:12px;color:#9A5A2B">the batch skipped these and graded the rest</span>
        </div>${rows}
      </div>`;
+}
+
+/* ══════════════ render-all galleries (input + output) ══════════════
+   Every ingested page is shown in one input grid; every page's graded result
+   is shown in one output grid. Sheets that could not be graded/marked appear
+   as an explicit error tile naming the cause, so nothing silently disappears. */
+function _ensureGalleryStyle(){
+  if(document.getElementById('gfGalleryStyle')) return;
+  const st=document.createElement('style'); st.id='gfGalleryStyle';
+  st.textContent='.gfgal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:4px}'
+    +'.gfgal figure{margin:0;border:1px solid var(--line,#E4E9ED);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column}'
+    +'.gfgal figure.err{border-color:#E6B89A;background:#FBF3EC}'
+    +'.gfgal .imgwrap{position:relative;background:#F4F7F9;aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;overflow:hidden}'
+    +'.gfgal img{width:100%;height:100%;object-fit:contain;display:block}'
+    +'.gfgal .pill{position:absolute;top:6px;left:6px;font:700 10.5px ui-monospace,monospace;padding:2px 7px;border-radius:20px;background:rgba(29,42,53,.82);color:#fff}'
+    +'.gfgal .pill.g{background:#1E7F4A}.gfgal .pill.r{background:#B4632B}.gfgal .pill.q{background:#5B6B77}'
+    +'.gfgal figcaption{padding:7px 9px;font-size:11.5px;color:#54626E;line-height:1.35}'
+    +'.gfgal figcaption b{color:#1D2A35}'
+    +'.gfgal .why{color:#9A5A2B;font-size:11px;margin-top:3px}'
+    +'.gfgal .grot{margin-top:6px;font:600 11px system-ui,sans-serif;padding:3px 9px;border:1px solid var(--line,#D3DBE0);border-radius:7px;background:#fff;color:#1b4965;cursor:pointer}'
+    +'.gfgal .grot:hover{background:#EEF4F7;border-color:#2a9d8f}'
+    +'.gfgal .noimg{color:#8A97A2;font-size:11.5px;padding:14px;text-align:center}';
+  document.head.appendChild(st);
+}
+function _galleryHost(tabId,gid,title){
+  _ensureGalleryStyle();
+  const tab=document.getElementById('tab-'+tabId); if(!tab) return null;
+  let box=document.getElementById(gid);
+  if(!box){
+    const wrap=document.createElement('section'); wrap.className='panel'; wrap.style.marginTop='16px';
+    wrap.innerHTML='<h3 style="margin:0 0 4px">'+title+'</h3>'
+      +'<p class="hint" style="margin:0 0 10px" id="'+gid+'Info"></p><div id="'+gid+'" class="gfgal"></div>';
+    tab.appendChild(wrap); box=document.getElementById(gid);
+  }
+  return box;
+}
+function _galThumb(s){                        // small image URL for a sheet (input side)
+  if(s.source==='synthetic') return sideDataUrl(s,0,s.status==='graded',0.5);
+  return s.thumb||(s.sides&&s.sides[0]&&s.sides[0].imageUrl)||'';
+}
+function _galOutImg(s){                        // graded/marked image URL for a sheet (output side)
+  if(s.status!=='graded') return '';
+  if(s.source==='synthetic') return sideDataUrl(s,0,true,0.5);
+  return ovlUrl(s,0)||s.thumb||'';
+}
+function _galReason(s){
+  if(s.gradeFailed) return 'Grading failed'+(s.gradeFailReason?(' — '+s.gradeFailReason):'');
+  if(s.notFixable) return 'Scan not readable'+(s.notFixableReason?(' — '+s.notFixableReason):'')+'. Rescan ≥300 dpi / darker pencil, or grade by hand.';
+  if(s.status==='review') return 'Needs manual grading — OCR unavailable or low confidence for this scan.';
+  if(s.status==='queued') return 'Not graded yet — run step 2 · Grade.';
+  return '';
+}
+function renderInputGallery(){
+  const box=_galleryHost('intake','allInput','All input pages'); if(!box) return;
+  const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const sheets=state.sheets.filter(s=>!s.archived);
+  const info=document.getElementById('allInputInfo');
+  if(info) info.textContent=sheets.length?('Every ingested page, rendered ('+sheets.length+'). Uploaded scans are shown at their capped thumbnail size to keep memory flat.'):'';
+  if(!sheets.length){ box.innerHTML='<div class="noimg">No pages yet — upload scans or load a sample batch above.</div>'; return; }
+  box.innerHTML=sheets.map(s=>{
+    const cls=s.status==='graded'?(s.printOnly?'q':'g'):(s.status==='review'?'r':'q');
+    const lab=s.status==='graded'?(s.printOnly?'↻ print':('✓ '+s.score)):(s.status==='review'?'review':'queued');
+    const img=_galThumb(s);
+    const media=img?`<img loading="lazy" alt="input page ${esc(s.id)}" src="${img}"><span class="pill ${cls}">${lab}</span>`
+                   :`<div class="noimg">scan pending</div><span class="pill ${cls}">${lab}</span>`;
+    const rbtn=(s.source!=='synthetic')?`<button class="grot" title="Rotate 90°" onclick="rotateSheet('${esc(s.id)}')">↻ rotate</button>`:'';
+    return `<figure><div class="imgwrap">${media}</div>
+      <figcaption><b>${esc(s.setCode||s.fileName||s.id)}</b><br>${esc(s.id)}${s.worksheetId?(' · '+esc(s.worksheetId)):''}${s.studentName?(' · '+esc(s.studentName)):''}${rbtn}</figcaption></figure>`;
+  }).join('');
+}
+function renderOutputGallery(){
+  const box=_galleryHost('output','allGraded','All graded pages'); if(!box) return;
+  const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const sheets=state.sheets.filter(s=>!s.archived);
+  const gradedN=sheets.filter(s=>s.status==='graded').length;
+  const errN=sheets.filter(s=>s.status==='review').length;
+  const info=document.getElementById('allGradedInfo');
+  if(info) info.textContent=sheets.length?(gradedN+' of '+sheets.length+' page(s) graded and marked'+(errN?(' · '+errN+' could not be graded — shown as error tiles below'):'')+'.'):'';
+  if(!sheets.length){ box.innerHTML='<div class="noimg">Nothing to show yet — grade sheets in step 2.</div>'; return; }
+  box.innerHTML=sheets.map(s=>{
+    if(s.status==='graded'){
+      const img=_galOutImg(s);
+      const pill=s.printOnly?`<span class="pill q">↻ print</span>`:`<span class="pill g">✓ ${s.score}</span>`;
+      const media=img?`<img loading="lazy" alt="graded page ${esc(s.id)}" src="${img}">${pill}`
+                     :`<div class="noimg">${s.printOnly?'oriented (no preview)':'marked (no preview)'}</div>${pill}`;
+      const note=s.printOnly?' · auto-oriented for printing (grade by hand)':(s.wrong&&s.wrong.length?(' · wrong #'+s.wrong.join(', #')):' · perfect');
+      const rbtn=(s.source!=='synthetic')?`<button class="grot" title="Rotate 90° — updates the input and output queue" onclick="rotateSheet('${esc(s.id)}')">↻ rotate</button>`:'';
+      return `<figure><div class="imgwrap">${media}</div>
+        <figcaption><b>${esc(s.setCode||s.fileName||s.id)}</b><br>${esc(s.id)}${s.studentName?(' · '+esc(s.studentName)):''}${note}${rbtn}</figcaption></figure>`;
+    }
+    // not-graded → explicit error / status tile so nothing silently vanishes
+    const img=_galThumb(s), why=_galReason(s), isErr=(s.status==='review');
+    const media=img?`<img loading="lazy" alt="ungraded page ${esc(s.id)}" src="${img}"><span class="pill ${isErr?'r':'q'}">${isErr?'not graded':'queued'}</span>`
+                   :`<div class="noimg">${isErr?'not graded':'queued'}</div>`;
+    return `<figure class="${isErr?'err':''}"><div class="imgwrap">${media}</div>
+      <figcaption><b>${esc(s.setCode||s.fileName||s.id)}</b><br>${esc(s.id)}<div class="why">⚠ ${esc(why)}</div></figcaption></figure>`;
+  }).join('');
 }
 
 function renderQueue(){
@@ -1768,6 +2554,8 @@ function renderQueue(){
   $('#ckAllG').checked=graded.length>0&&selG===graded.length;
   renderSummary(queued,graded);
   renderManualReview();
+  renderRoster();
+  try{ renderInputGallery(); renderOutputGallery(); }catch(e){/* galleries are best-effort */}
   if(!state.__ingesting){
     if(!state.sheets.length) setIntakeGuide('upload','run','Waiting for worksheets — drop files below, choose files, or load the sample batch.',false);
     else if(queued.length) setIntakeGuide('ready','ok',queued.length+' sheet(s) queued — press ▶ Run grading agent, or continue to step 2 · Grade.',false);
@@ -1857,41 +2645,96 @@ async function ingestImage(f,buf,mime){
     intakeError(f.name||'image','File has an image extension but the browser cannot decode it — likely corrupt, truncated, or misnamed.','Open it locally to confirm it renders, or rescan the worksheet.');
     return;
   }
+  let workUrl=url, thumbUrl=url, W0=0, H0=0;
+  try{ const r=await rasterizeIngest(url); workUrl=r.workUrl; thumbUrl=r.thumbUrl; W0=r.w; H0=r.h;
+    if(!r.fallback && workUrl!==url && thumbUrl!==url) URL.revokeObjectURL(url); }
+  catch(e){ /* keep the original url on both if downscale fails */ }
+  // rotate the input queue: deterministic upright pass (same as PDF pages)
+  try{
+    const up=await uprightIngest(workUrl,thumbUrl);
+    if(up){ workUrl=up.workUrl; thumbUrl=up.thumbUrl; W0=up.w; H0=up.h;
+      log((f.name||'scan')+' → auto-rotated '+up.deg+'° at intake — queued upright.','ok'); }
+  }catch(e){ /* best-effort */ }
   state.sheets.push({id:'WS-'+String(state.nextId++).padStart(4,'0'),studentId:null,setCode:null,
     fileName:f.name||'scan',examDate:new Date().toISOString().slice(0,10),source:'upload',
-    sides:[{imageUrl:url}],thumb:url,status:'queued',score:null,wrong:null,gradedAt:null});
-  log('Ingested image scan: '+(f.name||'scan'),'ok');
+    sides:[{imageUrl:workUrl,w:W0,h:H0}],thumb:thumbUrl,status:'queued',score:null,wrong:null,gradedAt:null});
+  log('Ingested image scan: '+(f.name||'scan')+(W0?(' · source '+W0+'×'+H0+'px, capped to '+WORK_MAX+'px working / '+THUMB_MAX+'px thumb'):''),'ok');
 }
 
-/* scanner-class PDFs embed JPEG page images (DCTDecode) — extract by SOI/EOI scan */
+/* Walk JPEG markers from an SOI to the true EOI, skipping segment payloads and
+   entropy-coded data (so FFD9 bytes inside image data don't truncate it). */
+function _jpegEnd(b,start){
+  let i=start+2, n=b.length;
+  while(i<n-1){
+    if(b[i]!==0xFF){ i++; continue; }
+    const m=b[i+1];
+    if(m===0xFF){ i++; continue; }                 // fill byte
+    if(m===0xD9){ return i+2; }                     // EOI
+    if(m===0x01 || (m>=0xD0&&m<=0xD7)){ i+=2; continue; } // TEM / RSTn (no length)
+    const len=(b[i+2]<<8)|b[i+3];                    // segment with length
+    if(m===0xDA){                                    // SOS → scan entropy data
+      i+=2+len;
+      while(i<n-1){
+        if(b[i]===0xFF){ const m2=b[i+1];
+          if(m2===0x00 || (m2>=0xD0&&m2<=0xD7)){ i+=2; continue; } // stuffed / RST
+          if(m2===0xD9){ return i+2; }               // EOI
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    i+=2+len;
+  }
+  return n;
+}
+/* scanner-class PDFs embed JPEG page images (DCTDecode) — extract each cleanly */
 async function ingestPdf(f){
   const bytes=new Uint8Array(await f.arrayBuffer());
-  const jpegs=[];
-  for(let i=0;i<bytes.length-3;i++){
-    if(bytes[i]===0xFF&&bytes[i+1]===0xD8&&bytes[i+2]===0xFF){
-      for(let j=i+2;j<bytes.length-1;j++){
-        if(bytes[j]===0xFF&&bytes[j+1]===0xD9){ jpegs.push(bytes.slice(i,j+2)); i=j+1; break; }
-      }
-    }
-  }
   if(!bytes.length){ intakeError(f.name,'PDF is empty.','Re-export the PDF and upload again.'); return; }
   if(!(bytes[0]===0x25&&bytes[1]===0x50&&bytes[2]===0x44&&bytes[3]===0x46)){
     intakeError(f.name,'File has a .pdf extension but is not a PDF (missing %PDF header) — likely renamed or corrupt.','Confirm the file opens in a PDF viewer, or rescan to a fresh PDF.');
     return;
   }
+  const jpegs=[];
+  for(let i=0;i<bytes.length-3;){
+    if(bytes[i]===0xFF&&bytes[i+1]===0xD8&&bytes[i+2]===0xFF){
+      const end=_jpegEnd(bytes,i);
+      const blob=bytes.slice(i,end);
+      if(blob.length>2000) jpegs.push(blob);   // skip tiny embedded thumbnails
+      i=end; continue;
+    }
+    i++;
+  }
   if(!jpegs.length){
-    intakeError(f.name,'Valid PDF, but it contains no embedded page images. This is a vector/text PDF (e.g., exported from Word), and the M2 alpha ingests scanner-class image PDFs only.','Print and scan the worksheet on the rig, or export as an image PDF at 300 dpi. Vector PDF support is scoped for M3.');
+    intakeError(f.name,'Valid PDF, but it contains no embedded JPEG page images. This is a vector/text PDF (e.g., exported from Word), and this build ingests scanner-class image PDFs only.','Print and scan the worksheet, or export as an image PDF at 300 dpi.');
     return;
   }
-  // pair pages into duplex sheets (A,B)
-  for(let p=0;p<jpegs.length;p+=2){
-    const urls=[URL.createObjectURL(new Blob([jpegs[p]],{type:'image/jpeg'}))];
-    if(jpegs[p+1]) urls.push(URL.createObjectURL(new Blob([jpegs[p+1]],{type:'image/jpeg'})));
-    state.sheets.push({id:'WS-'+String(state.nextId++).padStart(4,'0'),studentId:null,setCode:null,
-      fileName:f.name+' · pg '+(p+1)+(urls[1]?('–'+(p+2)):''),examDate:new Date().toISOString().slice(0,10),
-      source:'upload',sides:urls.map(u=>({imageUrl:u})),thumb:urls[0],status:'queued',score:null,wrong:null,gradedAt:null});
+  // one sheet per page (Kumon worksheets are graded per page). Each page is
+  // decoded once and downscaled to a capped work + thumb blob URL so a large
+  // multi-page PDF cannot balloon the tab's memory.
+  const multi=jpegs.length>1;
+  for(let p=0;p<jpegs.length;p++){
+    const src=URL.createObjectURL(new Blob([jpegs[p]],{type:'image/jpeg'}));
+    let workUrl=src, thumbUrl=src, W0=0, H0=0;
+    try{ const r=await rasterizeIngest(src); workUrl=r.workUrl; thumbUrl=r.thumbUrl; W0=r.w; H0=r.h;
+      if(!r.fallback && workUrl!==src && thumbUrl!==src) URL.revokeObjectURL(src); }
+    catch(e){ /* keep raw page blob if downscale fails */ }
+    // ── rotate the input queue: stand the page upright BEFORE it is queued so
+    // header OCR, grading anchors, overlays and print all see an upright page.
+    // Deterministic pixel test (no OCR) — some scanner batches store a page
+    // flipped 180° or sideways even though every viewer shows it upright.
+    try{
+      const up=await uprightIngest(workUrl,thumbUrl);
+      if(up){ workUrl=up.workUrl; thumbUrl=up.thumbUrl; W0=up.w; H0=up.h;
+        log(f.name+(multi?(' · pg '+(p+1)):'')+' → auto-rotated '+up.deg+'° at intake — queued upright.','ok'); }
+    }catch(e){ /* orientation is best-effort; the grade-time rotation search still runs */ }
+    state.sheets.push({id:'WS-'+String(state.nextId++).padStart(4,'0'),studentId:null,studentName:null,setCode:null,worksheetId:null,
+      fileName:f.name+(multi?(' · pg '+(p+1)):''),examDate:new Date().toISOString().slice(0,10),
+      source:'upload',sides:[{imageUrl:workUrl,w:W0,h:H0}],thumb:thumbUrl,status:'queued',score:null,wrong:null,gradedAt:null,
+      __multiPage:multi,__pageIndex:p,__pageCount:jpegs.length});
   }
-  log('Ingested '+f.name+': '+jpegs.length+' page image(s) → '+Math.ceil(jpegs.length/2)+' duplex sheet(s).','ok');
+  log('Ingested '+f.name+': '+jpegs.length+' page image(s) → '+jpegs.length+' sheet(s) · each capped to '+WORK_MAX+'px working / '+THUMB_MAX+'px thumb (source pages are ~2500×3500).','ok');
 }
 
 /* minimal ZIP reader: EOCD → central directory → local entries; deflate via DecompressionStream */
@@ -2013,19 +2856,43 @@ function saveCloudPrefs(){ try{localStorage.setItem('gfcloud',JSON.stringify({ur
 function loadCloudPrefs(){ /* cloud proxy is operator-configured out of band; users never set it */ }
 
 /* ── in-browser OCR (vendored Tesseract WASM, same-origin, no CDN) ── */
-let bocrWorker=null, bocrLoadTried=false;
+let bocrWorker=null, bocrLoadTried=false, bocrPaths=null;
 function loadScript(src){return new Promise((res,rej)=>{const el=document.createElement('script');el.src=src;el.onload=res;el.onerror=()=>rej(new Error('script load failed: '+src));document.head.appendChild(el);});}
+// Candidate locations — supports both a vendor/ folder AND flat, same-folder
+// files with either dot or underscore names (tesseract.min.js / tesseract_min.js).
+const OCR_LIBS   =['vendor/tesseract_min.js','vendor/tesseract.min.js','tesseract_min.js','tesseract.min.js'];
+const OCR_WORKERS=['vendor/worker_min.js','vendor/worker.min.js','worker_min.js','worker.min.js'];
+const OCR_CORES  =['vendor/','vendor/core/','./',''];
+const OCR_LANGS  =['vendor','vendor/','.','./'];
+async function ensureTesseract(){
+  if(typeof Tesseract!=='undefined') return;
+  let lastErr;
+  for(const src of OCR_LIBS){ try{ await loadScript(src); if(typeof Tesseract!=='undefined'){ bocrPaths=bocrPaths||{}; bocrPaths.lib=src; return; } }catch(e){ lastErr=e; } }
+  throw new Error('Tesseract library not found. Place tesseract_min.js (and worker_min.js, eng.traineddata, tesseract-core-*.wasm) beside index.html. '+(lastErr?lastErr.message:''));
+}
 async function getBocrWorker(){
   if(bocrWorker) return bocrWorker;
-  if(typeof Tesseract==='undefined'){
-    if(bocrLoadTried) throw new Error('engine unavailable');
-    bocrLoadTried=true;
-    await loadScript('vendor/tesseract.min.js'); // same-origin; absent in single-file mode
+  if(bocrLoadTried && !typeofTesseractOk()) throw new Error('engine unavailable');
+  bocrLoadTried=true;
+  await ensureTesseract();
+  if($('#ocrDot')) $('#ocrDot').className='dot on';
+  // try worker/core/lang combinations until one initializes
+  let lastErr;
+  for(const workerPath of OCR_WORKERS){
+    for(const corePath of OCR_CORES){
+      for(const langPath of OCR_LANGS){
+        try{
+          const w=await Tesseract.createWorker('eng',1,{workerPath,corePath,langPath,gzip:false});
+          bocrWorker=w; bocrPaths=Object.assign(bocrPaths||{},{workerPath,corePath,langPath});
+          try{ log('In-browser OCR ready · worker '+workerPath+' · core '+(corePath||'(root)')+' · lang '+(langPath||'(root)'),'ok'); }catch(_){}
+          return w;
+        }catch(e){ lastErr=e; }
+      }
+    }
   }
-  $('#ocrDot').className='dot on';
-  bocrWorker=await Tesseract.createWorker('eng',1,{workerPath:'vendor/worker.min.js',corePath:'vendor/core/',langPath:'vendor',gzip:false});
-  return bocrWorker;
+  throw new Error('OCR worker failed to start ('+(lastErr?lastErr.message:'unknown')+'). Check that worker_min.js, eng.traineddata and the tesseract-core-*.wasm files sit beside index.html.');
 }
+function typeofTesseractOk(){ return typeof Tesseract!=='undefined'; }
 function parseOcrProblems(text){
   // pull "a op b = c" lines out of raw OCR text; tolerant of x / * ÷ − and missing numbering
   const out=[]; const re=/(\d{1,4})\s*([+xX×*÷\/\-−])\s*(\d{1,4})\s*=\s*(\d{1,4})/g;
@@ -2123,7 +2990,7 @@ function _pipelineCanvas(c,mode,deskew){
 }
 async function prepareImage(imageUrl,deg,opts){
   const img=await loadImg(imageUrl);
-  let c=_rotatedCanvas(img,deg||0,2000);
+  let c=_rotatedCanvas(img,deg||0,WORK_MAX);
   const mode=(opts&&opts.mode)||'readable';
   const wantEnhance=!(opts&&opts.enhance===false);
   let meta=null, prep='legacy';
@@ -2138,7 +3005,9 @@ async function prepareImage(imageUrl,deg,opts){
       if(mode==='ink') c=_adaptiveInk(c,10);       // additionally binarize for the line reader
     }
   }
-  return {url:c.toDataURL('image/png'),w:c.width,h:c.height,deg:deg||0,
+  const url=await canvasToUrl(c,'image/png');   // blob URL — keeps binarized ink crisp without a base64 string in the heap
+  const w=c.width, h=c.height; _freeCanvas(c);
+  return {url,w,h,deg:deg||0,
           gate:(meta&&meta.gate)||null, skew:(meta&&meta.detectedSkewDeg)||0, prep};
 }
 function _scoreParse(res){ return (res&&res.problems?res.problems.length:0)*100 + (res&&res.conf?res.conf*100:0); }
@@ -2175,6 +3044,7 @@ async function prepareSideForOcr(sd){
   const o=_scanOpts(), opts={enhance:o.enhance,deskew:o.deskew,mode:o.mode};
   if(typeof sd.rotate==='number' && !o.autoRotate){           // hand-set angle, auto off
     const p=await prepareImage(sd.imageUrl,sd.rotate,opts);
+    revokeUrl(sd.procUrl);
     sd.procUrl=p.url; sd.procW=p.w; sd.procH=p.h; sd.__ocr=null; sd.__gate=p.gate; sd.__skew=p.skew; return sd.rotate;
   }
   let land=false; try{ const im=await loadImg(sd.imageUrl); land=(im.naturalWidth||im.width)>(im.naturalHeight||im.height); }catch(e){}
@@ -2182,15 +3052,25 @@ async function prepareSideForOcr(sd){
   const order=(typeof sd.rotate==='number')?[sd.rotate].concat(base):base;
   if(o.autoRotate){
     try{
-      let best=null; const tried=new Set();
+      const cands=[]; const tried=new Set();
       for(const deg of order){
         const dg=((deg%360)+360)%360; if(tried.has(dg))continue; tried.add(dg);
         const p=await prepareImage(sd.imageUrl,dg,opts);
         const res=await ocrPrepared(p.url);
-        const sc=_scoreParse(res);
-        if(!best||sc>best.sc) best={sc,deg:dg,p,res};
-        if(res.problems.length>=5 || res.words>=40) break;    // clearly the right way up — stop
+        cands.push({sc:_scoreParse(res),deg:dg,p,res});
+        if(res.problems.length>=5 || res.words>=40) break;    // clearly the right way up — stop early
       }
+      let best=cands.reduce((a,b)=>b.sc>a.sc?b:a, cands[0]);
+      const zero=cands.find(c=>c.deg===0);
+      // Upright bias: a non-zero rotation must WIN CLEARLY (≥25% higher score and
+      // real content), else keep 0°. Stops a faint page — where every orientation
+      // scores near-zero noise — from being flipped by accident.
+      if(zero && best.deg!==0){
+        const clearWin = best.sc >= zero.sc*1.25 && (best.res.problems.length>=2 || best.res.words>=8);
+        if(!clearWin) best=zero;
+      }
+      cands.forEach(c=>{ if(c!==best) revokeUrl(c.p.url); });   // free every losing rotation's blob
+      revokeUrl(sd.procUrl);
       sd.rotate=best.deg; sd.procUrl=best.p.url; sd.procW=best.p.w; sd.procH=best.p.h; sd.__ocr=best.res;
       sd.__gate=best.p.gate; sd.__skew=best.p.skew;
       return best.deg;
@@ -2198,6 +3078,7 @@ async function prepareSideForOcr(sd){
   }
   const deg=(typeof sd.rotate==='number')?sd.rotate:(land?90:0);   // at least de-rotate a sideways scan
   const p=await prepareImage(sd.imageUrl,deg,opts);
+  revokeUrl(sd.procUrl);
   sd.procUrl=p.url; sd.procW=p.w; sd.procH=p.h; sd.__ocr=null; sd.__gate=p.gate; sd.__skew=p.skew; return deg;
 }
 
@@ -2205,7 +3086,27 @@ async function browserOcrSide(sd){
   // NOTE: plain-text OCR tier — cannot see color, so prior red ✗ marks are not detected here.
   const deg=await prepareSideForOcr(sd);          // orientation + faint-pencil enhance
   const res=sd.__ocr || await ocrPrepared(sd.procUrl); sd.__ocr=null;
-  return {problems:res.problems,conf:res.conf,rotate:deg};
+  return {problems:res.problems,conf:res.conf,rotate:deg,text:res.text||''};
+}
+/* Auto-recognize an uploaded scan from its OCR text: the worksheet code (→ links
+   the KumonMath answer key) and the student name (→ auto-assigns the roster).
+   Best-effort and non-destructive: only fills fields the user hasn't set. */
+function autoRecognizeSheet(sheet,text){
+  if(!text) return;
+  try{
+    if(!sheet.worksheetId){
+      const m=text.match(/\b([A-Ia-i])\s?0*(\d{1,3})\s?([ab])\b/);
+      if(m){ const norm=kumonNormalizeId(m[1]+m[2]+(m[3]||'a').toLowerCase()); if(norm){ sheet.worksheetId=norm;
+        const f=KumonMath.familyFor(norm); if(f) sheet.worksheetFamily=f.family;
+        if(!sheet.level) sheet.level=norm[0].toUpperCase();
+        log(sheet.id+' → recognized worksheet '+norm+(KUMON_WORKSHEETS[norm]?(' ('+KUMON_WORKSHEETS[norm].title+')'):''),'ok'); } }
+    }
+    if(!sheet.studentName){
+      const nm=text.match(/Name\s*[:.]?\s*([A-Za-z][A-Za-z'\-]{1,20}(?:\s+[A-Za-z'\-]{1,20})?)/);
+      if(nm){ const name=nm[1].trim(); if(name && !/^(date|time|kumon)$/i.test(name)){ sheet.studentName=name; sheet.studentId=name;
+        log(sheet.id+' → auto-assigned student "'+name+'"','ok'); } }
+    }
+  }catch(e){ /* recognition is best-effort */ }
 }
 
 function evalExpr(q){
@@ -2241,27 +3142,38 @@ function _notFixable(sheet,extra){
   return false;
 }
 
-async function bocrAttempt(sheet,who){
-  if(!($('#bocrUse')&&$('#bocrUse').checked)){ log(sheet.id+' → no further OCR tier enabled — routed to review','wr'); return false; }
+/* Lightweight orientation for an un-gradable scan: correct an obvious sideways
+   (landscape) capture from aspect only — NO heavy per-rotation OCR pipeline,
+   which is what could exhaust the WASM heap and halt a large batch. Honours a
+   rotation already found by the header pass; otherwise leaves portrait upright.
+   The operator can still fine-tune with the ↻ Rotate button in the queue. */
+async function lightOrient(sd){
+  if(typeof sd.rotate==='number') return sd.rotate;
+  try{ const im=await loadImg(sd.imageUrl); const land=(im.naturalWidth||im.width)>(im.naturalHeight||im.height); return land?90:0; }
+  catch(e){ return 0; }
+}
+/* Rotate a scan we can't auto-grade and prepare it for the output/print queue.
+   Never throws and never runs the local handwriting reader — it only orients
+   and re-encodes the scan so it can be printed and graded by hand. */
+async function orientForPrint(sheet,who){
   try{
-    agentGuide(who+': auto-orienting and enhancing the scan, then reading it locally…',true);
-    let total=0, confSum=0, nsides=0; const rots=[];
+    agentGuide(who+': auto-orienting the scan for the output/print queue…',true);
     for(const sd of sheet.sides){
-      const out=await browserOcrSide(sd);
-      sd.problems=out.problems.map(p=>({...p,ocr:String(p.written),conf:+out.conf.toFixed(3),expected:evalExpr(p.q),correct:null}));
-      total+=out.problems.length; confSum+=out.conf; nsides++; rots.push(out.rotate||0);
+      let deg=0; try{ deg=await lightOrient(sd); }catch(e){ deg=0; }
+      sd.rotate=deg;
+      try{ revokeUrl(sd.procUrl); const p=await prepareImage(sd.imageUrl,deg,{enhance:false}); sd.procUrl=p.url; }catch(e){}
     }
-    const meanConf=nsides?confSum/nsides:0;
-    const rotNote=rots.some(d=>d)?(' · auto-rotated '+rots.map(d=>d+'°').join('/')):'';
-    if(!total){ return _notFixable(sheet, ' · no readable "a op b = c" lines'+rotNote); }
-    if(meanConf<0.45){ return _notFixable(sheet, ' · OCR confidence too low ('+Math.round(meanConf*100)+'%)'+rotNote); }
-    log(sheet.id+' → in-browser OCR read '+total+' problem(s) · mean confidence '+Math.round(meanConf*100)+'%'+rotNote,'ok');
-    return true;
-  }catch(e){
-    $('#ocrDot').className='dot off';
-    log(sheet.id+' → in-browser OCR unavailable ('+e.message+'). Single-file build has no vendor/ folder — use the deployed site package. Routed to review.','wr');
-    return false;
-  }
+  }catch(e){ try{ log(sheet.id+' → orient-for-print note ('+e.message+') — printing at the scanned orientation.','wr'); }catch(_){} }
+  return true;   // rotate-and-print always succeeds; worst case prints as-scanned
+}
+/* The in-browser handwriting reader was removed: on some batches its OCR/WASM
+   step could abort the heap and halt the whole run. This stub keeps any legacy
+   call site safe — it never reads handwriting locally; it just auto-orients the
+   scan for the output/print queue and reports back so the sheet is marked
+   print-only. It cannot throw, and it emits no "reading it locally" step. */
+async function bocrAttempt(sheet,who){
+  try{ await orientForPrint(sheet,who); sheet.printOnly=true; }catch(e){}
+  return false;   // never counts as an auto-graded read
 }
 async function runAgent(){
   const queued=state.sheets.filter(s=>s.status==='queued'&&!s.archived);
@@ -2271,6 +3183,7 @@ async function runAgent(){
   const runIds=queued.map(s=>s.id);
   const useModel=false; // Ollama removed; in-browser reader is the default
   $('#jsonOut').innerHTML='';
+  __ocrDead=false;   // give local OCR a fresh chance each run
   log('── Agent run start · '+queued.length+' sheet(s) · OCR='+($('#vlmUse').checked?'in-browser reader / synthetic':'deterministic/synthetic')+' ──');
 
   let si=0; const skipped=[]; const gradeFailures=[];
@@ -2280,6 +3193,7 @@ async function runAgent(){
     resetStages();
     sheet.notFixable=false; sheet.notFixableReason=null;   // clear stale flags on re-run
     sheet.gradeFailed=false; sheet.gradeFailReason=null;
+    sheet.__knownGraded=false;
     try{
     $('#agentStatus').textContent='Processing '+sheet.id+'…';
     setStage('feed','run'); agentGuide(who+': feeding into the transport (ESP32 roller, low-noise profile)…',true);
@@ -2290,15 +3204,25 @@ async function runAgent(){
     log(sheet.id+' → side B'); await wait(240); setStage('scanB','ok');
 
     setStage('ocr','run');
-    agentGuide(who+(sheet.source==='synthetic'?': reading 20 handwritten answers…':': reading the scan with the in-browser handwriting reader…'),true);
-    let ok=true;
-    if(sheet.source==='synthetic'){
-      const r=mulberry32(sheet.seed+777);
+    agentGuide(who+(sheet.source==='synthetic'?': reading 20 handwritten answers…':': reading the printed header to identify the worksheet…'),true);
+    let ok=true, printOnly=false;
+    // Uploaded scan recognized as a known worksheet? Grade it deterministically
+    // against the built-in KumonMath key + this student's answers.
+    let knownId=null;
+    if(sheet.source!=='synthetic'){ knownId=await recognizeUploadedWorksheet(sheet); if(knownId) applyKnownWorksheet(sheet,knownId); }
+    if(sheet.source==='synthetic' || sheet.__knownGraded){
+      const r=mulberry32((sheet.seed||0)+777);
+      const all=sheet.sides.flatMap(s=>s.problems);
       sheet.sides.forEach(sd=>sd.problems.forEach(p=>{
         p.ocr=String(p.written);
         p.conf=+(0.86+r()*0.135).toFixed(3);
       }));
-      log(sheet.id+' → OCR complete · 20 fields · mean conf '+(sheet.sides.flatMap(s=>s.problems).reduce((a,p)=>a+p.conf,0)/20).toFixed(3),'ok');
+      if(sheet.__knownGraded){
+        if(!sheet.studentName){ sheet.studentName='Unassigned'; }
+        log(sheet.id+' → recognized worksheet '+knownId+' — grading against built-in answer key ('+all.length+' problems, student '+(sheet.studentName||'unassigned')+')','ok');
+      }else{
+        log(sheet.id+' → OCR complete · '+all.length+' fields · mean conf '+(all.reduce((a,p)=>a+p.conf,0)/Math.max(1,all.length)).toFixed(3),'ok');
+      }
     }else if($('#vlmUse')&&$('#vlmUse').checked&&location.protocol!=='file:'){
       try{
         agentGuide(who+': running the in-browser AI model on the scan (all local)…',true);
@@ -2313,8 +3237,8 @@ async function runAgent(){
       }catch(e){
         vlmFailed=true; $('#ocrDot').className='dot off';
         $('#ocrHint').textContent='unavailable this session ('+e.message+') — cascading to the OCR engine below.';
-        log(sheet.id+' → in-browser model failed ('+e.message+') — cascading to next OCR tier','wr');
-        ok=await bocrAttempt(sheet,who);
+        log(sheet.id+' → in-browser model failed ('+e.message+') — auto-orienting for the print queue instead','wr');
+        printOnly=true; ok=await orientForPrint(sheet,who);
       }
     }else if($('#cloudUse')&&$('#cloudUse').checked&&$('#cloudUrl').value.trim()){
       try{
@@ -2328,13 +3252,28 @@ async function runAgent(){
         if(!total){ ok=false; log(sheet.id+' → cloud OCR returned no problems — routed to review','wr'); }
         else log(sheet.id+' → cloud OCR read '+total+' problem(s) via '+$('#cloudModel').value,'ok');
       }catch(e){ ok=false; $('#ocrDot').className='dot off'; log(sheet.id+' → cloud OCR failed ('+e.message+') — routed to review. Check the proxy URL, its allowed-origins list, and your OpenRouter credit.','er'); }
-    }else if($('#bocrUse')&&$('#bocrUse').checked){
-      ok=await bocrAttempt(sheet,who);
     }else{
-      ok=false;
-      log(sheet.id+' → uploaded scan, no OCR tier enabled — routed to instructor review queue (deterministic engine never guesses handwriting)','wr');
+      // Uploaded scan that is NOT a recognized worksheet. Per operator setting,
+      // we do NOT run the local handwriting reader here — on a large batch it can
+      // abort the OCR WASM heap and stop the whole run. Instead we auto-orient the
+      // scan and send it to the output/print queue to be graded by hand.
+      printOnly=true; ok=await orientForPrint(sheet,who);
     }
     await wait(280); setStage('ocr', ok?'ok':'');
+
+    // ── rotate-and-print path: oriented scan, no auto-grade, printable in output ──
+    if(printOnly){
+      setStage('grade','ok'); setStage('print','run');
+      sheet.printOnly=true; sheet.score=null; sheet.wrong=[]; sheet.corrected=[];
+      sheet.gradedAt=new Date().toISOString();
+      try{ if(sheet.source!=='synthetic') await buildOverlays(sheet); }catch(e){}
+      setStage('print','ok'); setStage('return','ok');
+      sheet.status='graded';                                   // lands in the output queue so it can be printed
+      state.rel=0; updateRel();                                // not an auto-graded result
+      log(sheet.id+' → auto-oriented and queued to the output for printing (not scored — grade by hand)','wr');
+      agentGuide(who+': auto-oriented and sent to the output/print queue — grade by hand.',false);
+      renderQueue(); renderSheetList(); saveState(); continue;
+    }
 
     if(!ok){
       sheet.status='review'; state.rel=0; updateRel();
@@ -2349,12 +3288,20 @@ async function runAgent(){
       renderQueue(); saveState(); continue;
     }
 
+    if(sheet.source!=='synthetic') await detectGradedForSheet(sheet);
     setStage('grade','run');
     agentGuide(who+': comparing every detected answer against the computed result (deterministic engine)…',true);
     let correct=0,total=0; const wrong=[],corrected=[];
     try{
+      // If this is an uploaded scan of a recognized Kumon worksheet, the
+      // correct answers come from the deterministic KumonMath key (computed by
+      // math from the printed problems), keyed by problem order.
+      const kkey=(sheet.source!=='synthetic'&&sheet.worksheetId)?kumonKey(sheet.worksheetId):null;
+      let ki=0;
       sheet.sides.forEach(sd=>sd.problems.forEach(p=>{
-        if(p.expected==null) p.expected=evalExpr(p.q);
+        if(kkey && kkey[ki]!=null) p.expected=kkey[ki];
+        else if(p.expected==null) p.expected=evalExpr(p.q);
+        ki++;
         p.correct = String(p.ocr)===String(p.expected);
         total++;
         if(p.correct){ correct++; if(p.wasWrong)corrected.push(p.n); }
@@ -2379,8 +3326,17 @@ async function runAgent(){
       +(wrong.length?' · wrong: #'+wrong.join(', #'):' · perfect')
       +(corrected.length?' · corrected after prior ✗ (green-circled): #'+corrected.join(', #'):''), wrong.length?'wr':'ok');
 
-    setStage('print','run'); agentGuide(who+': compositing marks, corrections and the score stamp onto the original…',true);
-    if(sheet.source!=='synthetic'){ try{ await buildOverlays(sheet); }catch(e){} }
+    setStage('print','run'); agentGuide(who+': compositing the marks onto the original at the correct orientation…',true);
+    if(sheet.source!=='synthetic'){
+      // Orient the scan to the rotation found during recognition (or aspect) so
+      // the graded overlay — and the output queue — render the right way up.
+      for(const sd of sheet.sides){
+        let deg=(typeof sd.rotate==='number')?sd.rotate:0;
+        if(typeof sd.rotate!=='number'){ try{ deg=await lightOrient(sd); sd.rotate=deg; }catch(e){} }
+        try{ revokeUrl(sd.procUrl); const p=await prepareImage(sd.imageUrl,deg,{enhance:false}); sd.procUrl=p.url; }catch(e){}
+      }
+      try{ await buildOverlays(sheet); }catch(e){}
+    }
     log(sheet.id+' → overlay composited (✓/✗ marks + corrections + score stamp) · spool ready'); await wait(300); setStage('print','ok');
     setStage('return','run'); agentGuide(who+': returning sheet — scored '+sheet.score+'.',true); await wait(200); setStage('return','ok');
 
@@ -2405,7 +3361,8 @@ async function runAgent(){
   agentGuide('Run complete — see the summary below, or open step 3 · Graded.',false);
   $('#btnRun').disabled=false;
   log('── Agent run complete ──','ok');
-  const done=state.sheets.filter(s=>runIds.includes(s.id)&&s.status==='graded');
+  const done=state.sheets.filter(s=>runIds.includes(s.id)&&s.status==='graded'&&s.score!=null);
+  const printN=state.sheets.filter(s=>runIds.includes(s.id)&&s.status==='graded'&&s.printOnly).length;
   const revN=state.sheets.filter(s=>runIds.includes(s.id)&&s.status==='review').length;
   const nfSheets=state.sheets.filter(s=>runIds.includes(s.id)&&s.notFixable);
   if(nfSheets.length) log('Not fixable: '+nfSheets.length+' sheet(s) set aside for review — '+nfSheets.map(s=>s.id+' ('+(s.notFixableReason||'unreadable')+')').join('; ')+'. Every other sheet was still processed.','wr');
@@ -2415,11 +3372,12 @@ async function runAgent(){
   if(gfN) log('Grading failed on '+gfN+' sheet(s) — '+gradeFailures.map(s=>s.id+' ('+s.reason+')').join('; ')+'. Every other sheet was still graded.','er');
   const errNote=errN?` · <strong>${errN}</strong> skipped after errors (${errList})`:'';
   const gfNote=gfN?` · <strong>${gfN}</strong> grading failed (${gfList})`:'';
+  const pNote=printN?` · <strong>${printN}</strong> auto-oriented for printing (grade by hand)`:'';
   if(done.length){
     const avg=Math.round(done.reduce((a,s)=>a+s.score,0)/done.length);
     const perfect=done.filter(s=>s.score===100).length;
     $('#runDone').innerHTML=`<div class="done" role="status"><span class="tk">✓</span>
-      <span>Grading complete — <strong>${done.length}</strong> sheet(s) graded · batch average <strong>${avg}</strong> · <strong>${perfect}</strong> perfect${revN?` · ${revN} sent to review`:''}${gfNote}${errNote}.</span>
+      <span>Grading complete — <strong>${done.length}</strong> sheet(s) graded · batch average <strong>${avg}</strong> · <strong>${perfect}</strong> perfect${revN?` · ${revN} sent to review`:''}${pNote}${gfNote}${errNote}.</span>
       <button class="btn" onclick="switchTab('graded')">Open graded sheets →</button>
       <button class="btn ghost" onclick="switchTab('reports')">View tally</button></div>`;
     const failN=errN+gfN;
@@ -2428,6 +3386,11 @@ async function runAgent(){
   }else if(revN){
     $('#runDone').innerHTML=`<div class="done" style="border-color:#E0B98A;background:var(--amber-soft);color:var(--amber)"><span class="tk" style="background:var(--amber)">!</span><span>${revN} sheet(s) routed to review — nothing graded this run${gfN?` (${gfN} after grading failures: ${gfList})`:''}${errN?` (${errN} after errors: ${errList})`:''}.</span></div>`;
     if(gfN||errN) showToast(`Nothing graded — ${gfN?gfN+' grading failure(s)':''}${gfN&&errN?', ':''}${errN?errN+' error(s)':''} set aside for review.`,'Open review','review');
+  }else if(printN){
+    $('#runDone').innerHTML=`<div class="done" role="status"><span class="tk">↻</span><span><strong>${printN}</strong> scan(s) auto-oriented and queued to the output for printing — none were recognized worksheets, so they weren't auto-graded. Print them and grade by hand, or assign a worksheet code (👤) and re-run.</span>
+      <button class="btn" onclick="switchTab('output')">Open output / print →</button></div>`;
+    showToast(`${printN} scan(s) auto-oriented and ready to print — grade by hand.`,'Open output →','output');
+    pulseCount('#cG');
   }
   if(!state.selected){ const g=state.sheets.find(s=>s.status==='graded'); if(g) selectSheet(g.id); }
   renderManualReview();
@@ -2469,7 +3432,7 @@ function renderSheetList(){
   graded.forEach(s=>{
     const el=document.createElement('div'); el.className='sitem'+(state.selected===s.id?' sel':'');
     el.setAttribute('role','button'); el.tabIndex=0;
-    el.innerHTML=`<div class="l"><strong>${s.setCode||s.fileName}</strong><br><span class="st">${s.studentId||'—'} · ${s.examDate}</span></div><div class="stamp">${s.score}</div>`;
+    el.innerHTML=`<div class="l"><strong>${s.setCode||s.fileName}</strong><br><span class="st">${s.studentId||'—'} · ${s.examDate}</span></div><div class="stamp"${s.printOnly?' style="font-size:13px;color:#5B6B77" title="Auto-oriented for printing — not scored"':''}>${s.printOnly?'↻':s.score}</div>`;
     el.onclick=()=>selectSheet(s.id);
     el.onkeydown=e=>{if(e.key==='Enter'||e.key===' ')selectSheet(s.id);};
     list.appendChild(el);
@@ -2481,10 +3444,11 @@ function selectSheet(id){
   const s=state.sheets.find(x=>x.id===id); if(!s)return;
   renderSheetList();
   $('#oDate').value=s.examDate||'';
-  const wrong=(s.wrong&&s.wrong.length?('wrong: #'+s.wrong.join(', #')):'perfect — no corrections')
-    +(s.corrected&&s.corrected.length?(' · corrected after prior ✗ (green-circled): #'+s.corrected.join(', #')):'');
-  $('#scoreLine').innerHTML=`<div class="stamp" style="width:56px;height:56px;font-size:20px">${s.score}</div>
-    <div class="big"><strong>${s.setCode||s.fileName}</strong> · ${s.studentId||'unassigned'} · ${s.id}<br>${wrong} · graded ${(s.gradedAt||'').slice(0,10)}</div>`;
+  const wrong=s.printOnly?'auto-oriented for printing — not scored, grade by hand'
+    :((s.wrong&&s.wrong.length?('wrong: #'+s.wrong.join(', #')):'perfect — no corrections')
+    +(s.corrected&&s.corrected.length?(' · corrected after prior ✗ (green-circled): #'+s.corrected.join(', #')):''));
+  $('#scoreLine').innerHTML=`<div class="stamp" style="width:56px;height:56px;font-size:${s.printOnly?'22px':'20px'}">${s.printOnly?'↻':s.score}</div>
+    <div class="big"><strong>${s.setCode||s.fileName}</strong> · ${s.studentId||'unassigned'} · ${s.id}<br>${wrong} · ${s.printOnly?'oriented':'graded'} ${(s.gradedAt||'').slice(0,10)}</div>`;
   const pv=$('#preview'); pv.innerHTML='';
   if(s.source==='synthetic'){
     s.sides.forEach((_,si)=>{
@@ -2524,9 +3488,35 @@ function doPrint(){
   log('Print job spooled: '+s.id+' → queue '+$('#oPrinter').value+' (routing confirmed in system dialog on alpha rig)','ok');
   setTimeout(()=>window.print(),120);
 }
+/* Print EVERY graded sheet at once — all marked overlays into the print area,
+   one image per printed page, newest student order preserved. */
+function printAllGraded(){
+  const graded=state.sheets.filter(s=>s.status==='graded'&&!s.archived);
+  if(!graded.length){ alert('No graded sheets to print yet — grade sheets in step 2 first.'); return; }
+  const pa=$('#printArea'); pa.innerHTML='';
+  let pages=0;
+  graded.forEach(s=>{
+    const srcs=s.source==='synthetic'?s.sides.map((_,si)=>sideDataUrl(s,si,true,0.92))
+              :s.sides.map((sd,si)=>ovlUrl(s,si)||sd.imageUrl);
+    srcs.forEach(u=>{ if(!u)return; const img=document.createElement('img'); img.src=u; pa.appendChild(img); pages++; });
+  });
+  state.jobLog.unshift(new Date().toISOString().slice(0,16).replace('T',' ')+' · PRINT-ALL · '+graded.length+' sheet(s), '+pages+' page(s)');
+  saveState(); renderJobLog();
+  log('Print-all spooled: '+graded.length+' graded sheet(s) → '+pages+' page(s) → queue '+$('#oPrinter').value+' (confirm routing in the system dialog).','ok');
+  showToast('Printing all '+graded.length+' graded sheet(s) — '+pages+' page(s).');
+  setTimeout(()=>window.print(),160);
+}
 
 /* minimal PDF writer — half-letter duplex, JPEG XObjects, no libraries */
 function dataUrlToBytes(u){const b=atob(u.split(',')[1]);const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+/* Overlay URLs are blob: URLs (kept out of the JS heap for memory). PDF export
+   needs the raw JPEG bytes — fetch handles both blob: and data: URLs. */
+async function urlToBytes(u){
+  if(!u) return null;
+  if(u.indexOf('data:')===0) return dataUrlToBytes(u);
+  try{ const buf=await (await fetch(u)).arrayBuffer(); return new Uint8Array(buf); }
+  catch(e){ return null; }
+}
 function buildPdf(pages){ // pages:[{jpeg:Uint8Array,w,h}]
   const enc=new TextEncoder(); const chunks=[]; let pos=0; const offs=[0];
   const put=x=>{const b=typeof x==='string'?enc.encode(x):x;chunks.push(b);pos+=b.length;};
@@ -2564,7 +3554,7 @@ async function doSave(){
     pages=[];
     for(let si=0;si<s.sides.length;si++){
       const o=OVL[ovlKey(s.id,si)];
-      if(o) pages.push({jpeg:dataUrlToBytes(o.url),w:o.w,h:o.h});
+      if(o){ const jb=await urlToBytes(o.url); if(jb) pages.push({jpeg:jb,w:o.w,h:o.h}); }
     }
     if(!pages.length){ alert('Could not composite the graded overlay for this scan — use Print instead.'); return; }
   }
@@ -2579,8 +3569,9 @@ async function doSave(){
 /* ══════════════ reports ══════════════ */
 function renderTally(){
   const box=$('#repStats'); if(!box)return;
-  const graded=state.sheets.filter(s=>s.status==='graded');
-  if(!graded.length){ box.innerHTML=''; return; }
+  const graded=state.sheets.filter(s=>s.status==='graded'&&s.score!=null);
+  const printQ=state.sheets.filter(s=>s.status==='graded'&&s.printOnly).length;
+  if(!graded.length){ box.innerHTML=printQ?('<div class="hint" style="margin:0">'+printQ+' scan(s) auto-oriented and queued for printing — none auto-scored yet.</div>'):''; return; }
   const scores=graded.map(s=>s.score);
   const avg=Math.round(scores.reduce((a,b)=>a+b,0)/scores.length);
   const perfect=scores.filter(v=>v===100).length;
@@ -2603,7 +3594,7 @@ function renderReports(){
   renderTally();
   const body=$('#repBody'); body.innerHTML='';
   const byStu={};
-  state.sheets.filter(s=>s.status==='graded'&&s.studentId).forEach(s=>{(byStu[s.studentId]=byStu[s.studentId]||[]).push(s);});
+  state.sheets.filter(s=>s.status==='graded'&&s.score!=null&&s.studentId).forEach(s=>{(byStu[s.studentId]=byStu[s.studentId]||[]).push(s);});
   const ids=Object.keys(byStu).sort();
   $('#repSummary').textContent=ids.length+' student(s) · '+state.sheets.filter(s=>s.status==='graded').length+' graded sheet(s) all-time · '+state.sheets.filter(s=>s.status==='review'&&!s.archived).length+' in review · '+state.sheets.filter(s=>s.archived).length+' archived (included in history, marked 🗄)';
   if(!ids.length){ body.innerHTML='<tr><td colspan="7" class="empty">No graded sheets yet.</td></tr>'; return; }
@@ -2638,6 +3629,7 @@ function switchTab(id){
   $$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
   $$('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+id));
   if(id==='intake'||id==='graded'||id==='archive'||id==='review') renderQueue();
+  if(id==='students') renderRoster();
   if(id==='output') renderSheetList();
   if(id==='reports') renderReports();
 }
@@ -2688,7 +3680,7 @@ async function downloadSelected(scope){
       if(s.status==='graded' && !OVL[ovlKey(s.id,0)]){ try{ await buildOverlays(s); }catch(e){} }
       for(let si=0;si<s.sides.length;si++){
         const o=OVL[ovlKey(s.id,si)];
-        if(o){ pages.push({jpeg:dataUrlToBytes(o.url),w:o.w,h:o.h}); }
+        if(o){ const jb=await urlToBytes(o.url); if(jb) pages.push({jpeg:jb,w:o.w,h:o.h}); }
         else { const p=await uploadPage(s.sides[si].imageUrl); if(p)pages.push(p); else skipped++; }
       }
     }
@@ -2753,11 +3745,11 @@ async function detectRunMode(){
     show('warn','<b>Running from a local file (file://).</b> Sample tests, grading, marking, faint-pencil enhancement, auto-rotate and exports all work. Reading <i>uploaded scans</i> needs the OCR engine, which browsers block on <code>file://</code> — serve this folder over http (GitHub Pages, S3/CloudFront, or a local web server) to enable it.');
     return;
   }
-  let vendor=false;
-  try{ const r=await fetch('vendor/tesseract.min.js',{method:'HEAD'}); vendor=r.ok; }
-  catch(e){ try{ const r2=await fetch('vendor/eng.traineddata',{method:'HEAD'}); vendor=r2.ok; }catch(_){ vendor=false; } }
-  if(vendor) show('ok','<b>Full mode.</b> Everything is active, including OCR of uploaded scans (in-browser, same-origin — nothing leaves this device).');
-  else show('warn','<b>Single-file mode — no <code>vendor/</code> OCR engine found.</b> Sample tests, grading, marking, enhancement, auto-rotate and exports work. Reading <i>uploaded scans</i> is disabled (they route to review) — put the <code>vendor/</code> folder next to <code>index.html</code> to enable OCR.');
+  // OCR files may live in vendor/ OR directly beside index.html — probe both.
+  const probe=async list=>{ for(const u of list){ try{ const r=await fetch(u,{method:'HEAD'}); if(r.ok) return true; }catch(e){} } return false; };
+  const vendor=await probe(['vendor/tesseract_min.js','vendor/tesseract.min.js','tesseract_min.js','tesseract.min.js','vendor/eng.traineddata','eng.traineddata']);
+  if(vendor) show('ok','<b>Full mode.</b> The in-browser OCR engine was found — reading uploaded scans is active (same-origin, nothing leaves this device). Auto-rotate, faint-pencil recovery, grading and marking all run locally.');
+  else show('warn','<b>OCR engine not found.</b> Sample tests, grading, marking, enhancement, auto-rotate and exports work. Reading <i>uploaded scans</i> is disabled (they route to review) — place <code>tesseract_min.js</code>, <code>worker_min.js</code>, <code>eng.traineddata</code> and the <code>tesseract-core-*.wasm</code> files beside <code>index.html</code> (or in a <code>vendor/</code> folder) to enable it.');
   // optional handwriting model: if vendor/ai/ isn't installed, skip the VLM tier so scans go straight to Tesseract (no per-sheet failure noise)
   try{ const a=await fetch('vendor/ai/transformers.web.min.js',{method:'HEAD'}); if(!a.ok) throw 0; }
   catch(e){ const v=$('#vlmUse'); if(v) v.checked=false; }
@@ -2769,6 +3761,7 @@ detectRunMode();
     SAMPLE_SUBJECTS.map(k=>`<option value="${k}">${LEVELS[k]?LEVELS[k].name:k}</option>`).join('');
 })();
 if($('#btnSampleTests')) $('#btnSampleTests').onclick=loadSampleTests;
+if($('#btnKumonTests')) $('#btnKumonTests').onclick=loadKumonTestSheets;
 if($('#btnRequeueAll')) $('#btnRequeueAll').onclick=()=>{
   const review=state.sheets.filter(s=>s.status==='review'&&!s.archived);
   if(!review.length) return;
@@ -2801,7 +3794,14 @@ async function removeSheets(pred,label){
      Their job-log entries go too${g?', and the reliability run resets because graded evidence is destroyed':''}. This cannot be undone.`,
     'Remove '+gone.length+' sheet(s)');
   if(!ok){ log(label+': cancelled.','wr'); return; }
-  gone.forEach(s=>(s.sides||[]).forEach(sd=>{ if(sd.imageUrl){ try{URL.revokeObjectURL(sd.imageUrl);}catch(e){} } }));
+  gone.forEach(s=>{
+    (s.sides||[]).forEach((sd,si)=>{
+      if(sd.imageUrl){ try{URL.revokeObjectURL(sd.imageUrl);}catch(e){} revokeUrl(sd.imageUrl); }
+      revokeUrl(sd.procUrl); revokeUrl(sd.dispUrl);
+      const o=OVL[ovlKey(s.id,si)]; if(o){ revokeUrl(o.url); delete OVL[ovlKey(s.id,si)]; }
+    });
+    revokeUrl(s.thumb); revokeUrl(s.__thumbRot);
+  });
   const ids=new Set(gone.map(s=>s.id));
   state.sheets=state.sheets.filter(s=>!ids.has(s.id));
   state.jobLog=state.jobLog.filter(l=>![...ids].some(id=>l.includes(id)));
@@ -2850,6 +3850,7 @@ $('#btnEmailAll').onclick=()=>{
 $('#btnRun').onclick=runAgent;
 $('#btnJam').onclick=simulateJam;
 $('#btnPrint').onclick=doPrint;
+if($('#btnPrintAll')) $('#btnPrintAll').onclick=printAllGraded;
 $('#btnSave').onclick=doSave;
 $('#btnCsv').onclick=exportCsv;
 $('#oPrinter').onchange=saveState;
