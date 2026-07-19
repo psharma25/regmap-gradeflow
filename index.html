@@ -267,7 +267,7 @@ footer b{color:#CFE0EA}
   @page{size:5.5in 8.5in;margin:0}
 }
 @media (prefers-reduced-motion: reduce){*{transition:none !important;animation:none !important}}
-.runmode{display:none;align-items:center;gap:10px;margin:0 0 14px;padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.45;border:1px solid}
+.runmode{display:none;align-items:center;gap:8px;margin:0 0 10px;padding:6px 12px;border-radius:8px;font-size:12px;line-height:1.35;border:1px solid}
 .runmode.ok{background:#eaf7ef;border-color:#bfe3cf;color:#155e3b}
 .runmode.warn{background:#fdf6e7;border-color:#ecd9a8;color:#7a5b12}
 .runmode code{background:rgba(0,0,0,.06);padding:0 4px;border-radius:4px;font-family:var(--mono)}
@@ -347,6 +347,12 @@ body.dark .runmode.warn{background:#2a2410;color:#e3c874}
       </select>
       <button class="btn" id="btnSampleTests">Load sample test</button>
       <button class="btn" id="btnKumonTests" title="Load the nine real uploaded Kumon worksheets across every family — B53a, D11a, D102a, C61a, G81a, I121a, E71a, E72a, E73b — graded by the KumonMath engine">Load real Kumon sheets</button>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;align-items:center;border-top:1px dashed #D3DAE0;padding-top:10px">
+      <span style="font-size:12.5px;color:#9A5A2B;font-weight:600">🚩 Negative tests</span>
+      <span style="font-size:12px;color:#5D6B77">intentionally not auto-gradable — each must route to human grading</span>
+      <input type="number" id="negCount" min="1" max="12" value="5" style="width:56px;padding:6px 8px;border:1px solid #B9C2CA;border-radius:6px;font:inherit">
+      <button class="btn warn" id="btnNegTests" title="Generate negative test sheets (faint / blank / ambiguous / unrecognized / conflicting). Run the agent and every one is flagged for human grading — that is the expected result.">Generate negative tests</button>
     </div>
     <input type="file" id="filePick" accept=".pdf,.zip,image/png,image/jpeg" multiple hidden>
   </div>
@@ -1194,6 +1200,7 @@ body.dark .runmode.warn{background:#2a2410;color:#e3c874}
   //   {op:'linear', point:[x,y], slope:m}   linear function
   function compute(p) {
     switch (p.op) {
+      case 'lit': return String(p.ans);   // layout-aware registry: deterministic stored key
       case '+': return String(add(p.a, p.b));
       case '-': return String(sub(p.a, p.b));
       case '*': case '×': return String(mul(p.a, p.b));
@@ -1412,7 +1419,8 @@ function saveState(){
     const slim=state.sheets.filter(s=>s.source==='synthetic').map(s=>({
       id:s.id,studentId:s.studentId,setCode:s.setCode,level:s.level,seed:s.seed,archived:!!s.archived,resub:!!s.resub,faded:!!s.faded,
       examDate:s.examDate,status:s.status,score:s.score,wrong:s.wrong,corrected:s.corrected,gradedAt:s.gradedAt,
-      notFixable:!!s.notFixable,notFixableReason:s.notFixableReason||null,gradeFailed:!!s.gradeFailed,gradeFailReason:s.gradeFailReason||null
+      notFixable:!!s.notFixable,notFixableReason:s.notFixableReason||null,gradeFailed:!!s.gradeFailed,gradeFailReason:s.gradeFailReason||null,
+      negative:!!s.negative,negKind:s.negKind||null,negReason:s.negReason||null
     }));
     localStorage.setItem('gfalpha',JSON.stringify({slim,rel:state.rel,jobLog:state.jobLog.slice(-40),nextId:state.nextId,
       view:state.view,printer:$('#oPrinter')?$('#oPrinter').value:'system'}));
@@ -1428,7 +1436,9 @@ function loadState(){
     (d.slim||[]).forEach(m=>{
       const sh=buildSyntheticSheet(m.studentId,m.level,m.setCode,m.seed,m.examDate,(m.resub||m.pregraded),m.faded);
       Object.assign(sh,{id:m.id,status:m.status,score:m.score,wrong:m.wrong,corrected:m.corrected,gradedAt:m.gradedAt,archived:!!m.archived,
-        notFixable:!!m.notFixable,notFixableReason:m.notFixableReason||null,gradeFailed:!!m.gradeFailed,gradeFailReason:m.gradeFailReason||null});
+        notFixable:!!m.notFixable,notFixableReason:m.notFixableReason||null,gradeFailed:!!m.gradeFailed,gradeFailReason:m.gradeFailReason||null,
+        negative:!!m.negative,negKind:m.negKind||null,negReason:m.negReason||null});
+      if(m.negative&&m.negKind==='blank') sh.sides.forEach(sd=>sd.problems.forEach(p=>{p.written='';}));
       state.sheets.push(sh);
     });
     return state.sheets.length>0;
@@ -1535,6 +1545,64 @@ const KUMON_WORKSHEETS = {
   'E72a': { title:'Addition of Fractions 7', family:'fraction', count:6, problems:[
     {op:'frac',a:[2,1,3],b:[0,5,6]},{op:'frac',a:[2,1,3],b:[0,7,9]},{op:'frac',a:[3,2,3],b:[0,2,9]},
     {op:'frac',a:[0,2,3],b:[3,5,9]},{op:'frac',a:[0,1,3],b:[4,2,9]},{op:'frac',a:[0,2,3],b:[4,4,9]}]},
+  /* ── layout-aware entries: printed problem + deterministic answer key stored
+     verbatim in the registry (answer-book style) for layouts KumonMath cannot
+     compute symbolically (word problems, algebra, simultaneous, trig). ── */
+  'F169a':{ title:'Solving Word Problems 1', family:'word', count:3, problems:[
+    {op:'lit',q:'apple trees = ½ × 420',ans:'210'},{op:'lit',q:'other trees = 420 − 210',ans:'210'},{op:'lit',q:'peach trees = 4/7 × 210',ans:'120'}]},
+  'F170a':{ title:'Solving Word Problems 1', family:'word', count:2, problems:[
+    {op:'lit',q:'my share = 5/12 × 1440 g',ans:'600'},{op:'lit',q:'sister = 840 − 3/7×840 g',ans:'480'}]},
+  'G59a':{ title:'Add/Sub of Positive and Negative Numbers 4', family:'signed-frac', count:5, problems:[
+    {op:'lit',q:'-1/2 - (1/5 - 1/4)',ans:'-9/20'},{op:'lit',q:'1/8 - (1/4 - 1/6)',ans:'1/24'},
+    {op:'lit',q:'1/9 + (1/3 - 1 1/6)',ans:'-13/18'},{op:'lit',q:'-1/6 - (1 1/4 - 2)',ans:'7/12'},
+    {op:'lit',q:'-1 1/8 - (2/3 - 1 1/2)',ans:'-7/24'}]},
+  'G60a':{ title:'Add/Sub of Positive and Negative Numbers 4', family:'signed-chain', count:10, problems:[
+    {op:'lit',q:'-3+8-5',ans:'0'},{op:'lit',q:'-3-8+5',ans:'-6'},{op:'lit',q:'1-2+3-4+5',ans:'3'},
+    {op:'lit',q:'1-2+3-4+5-6',ans:'-3'},{op:'lit',q:'(-3)+(-5)-(-9)',ans:'1'},{op:'lit',q:'(-3)-(-5)+(-9)',ans:'-7'},
+    {op:'lit',q:'(-3)-(-5)-(-9)',ans:'11'},{op:'lit',q:'(+3)+(-5)+(+9)',ans:'7'},
+    {op:'lit',q:'(+3)-(-5)-(+2)+(+7)',ans:'13'},{op:'lit',q:'(+3)-(+5)-(-2)+(+7)',ans:'7'}]},
+  'G69a':{ title:'Multiplication of Positive and Negative Numbers', family:'signed-pow', count:12, problems:[
+    {op:'lit',q:'2^3',ans:'8'},{op:'lit',q:'-2^3',ans:'-8'},{op:'lit',q:'-2^4',ans:'-16'},{op:'lit',q:'3^3',ans:'27'},
+    {op:'lit',q:'-3^3',ans:'-27'},{op:'lit',q:'-5^2',ans:'-25'},{op:'lit',q:'(-2)^3',ans:'-8'},{op:'lit',q:'-(-2)^3',ans:'8'},
+    {op:'lit',q:'-(-2)^4',ans:'-16'},{op:'lit',q:'(-3)^3',ans:'-27'},{op:'lit',q:'-(-3)^3',ans:'27'},{op:'lit',q:'-(-5)^2',ans:'-25'}]},
+  'G60b':{ title:'Add/Sub of Positive and Negative Numbers 4 (unanswered copy)', family:'signed-chain', count:10, blank:true, problems:[
+    {op:'lit',q:'-3+8-5',ans:'0'},{op:'lit',q:'-3-8+5',ans:'-6'},{op:'lit',q:'1-2+3-4+5',ans:'3'},
+    {op:'lit',q:'1-2+3-4+5-6',ans:'-3'},{op:'lit',q:'(-3)+(-5)-(-9)',ans:'1'},{op:'lit',q:'(-3)-(-5)+(-9)',ans:'-7'},
+    {op:'lit',q:'(-3)-(-5)-(-9)',ans:'11'},{op:'lit',q:'(+3)+(-5)+(+9)',ans:'7'},
+    {op:'lit',q:'(+3)-(-5)-(+2)+(+7)',ans:'13'},{op:'lit',q:'(+3)-(+5)-(-2)+(+7)',ans:'7'}]},
+  'G134a':{ title:'Simplifying Algebraic Expressions 2', family:'algebra', count:8, problems:[
+    {op:'lit',q:'(2x+2)-(x-4)',ans:'x+6'},{op:'lit',q:'(2x+2)-(x+4)',ans:'x-2'},{op:'lit',q:'(2x+2)-(-x+4)',ans:'3x-2'},
+    {op:'lit',q:'(4x-5)+(2x-3)',ans:'6x-8'},{op:'lit',q:'(4x-5)+(2x+3)',ans:'6x-2'},{op:'lit',q:'(4x-5)+(-2x+3)',ans:'2x-2'},
+    {op:'lit',q:'(3a-4)-(a+5)',ans:'2a-9'},{op:'lit',q:'(3a-4)-(-a-5)',ans:'4a+1'}]},
+  'G135a':{ title:'Simplifying Algebraic Expressions 2', family:'algebra', count:10, problems:[
+    {op:'lit',q:'(-a+5b)+(4a-b)',ans:'3a+4b'},{op:'lit',q:'(-a+5b)-(4a+b)',ans:'-5a+4b'},{op:'lit',q:'(-a-5b)+(4a-b)',ans:'3a-6b'},
+    {op:'lit',q:'(-a-5b)-(4a-b)',ans:'-5a-4b'},{op:'lit',q:'(-a+5b)+(-4a+b)',ans:'-5a+6b'},{op:'lit',q:'(-a+5b)-(-4a-b)',ans:'3a+6b'},
+    {op:'lit',q:'(2x^2+3x)+(2x+5)',ans:'2x^2+5x+5'},{op:'lit',q:'(5x^2+3x)-(2x+5)',ans:'5x^2+x-5'},
+    {op:'lit',q:'(-x^2-3x)+(-2x+5)',ans:'-x^2-5x+5'},{op:'lit',q:'(-3x^2-3x)-(-2x+5)',ans:'-3x^2-x-5'}]},
+  'E144a':{ title:'Multiplication of Fractions 1', family:'frac-mult', count:6, problems:[
+    {op:'lit',q:'2 1/3 × 1/4',ans:'7/12'},{op:'lit',q:'1 2/5 × 1/4',ans:'7/20'},{op:'lit',q:'3 1/3 × 2/7',ans:'20/21'},
+    {op:'lit',q:'1/7 × 5 1/2',ans:'11/14'},{op:'lit',q:'1/6 × 4 1/3',ans:'13/18'},{op:'lit',q:'2/7 × 2 1/5',ans:'22/35'}]},
+  'E145a':{ title:'Multiplication of Fractions 1', family:'frac-mult', count:5, problems:[
+    {op:'lit',q:'1 3/7 × 2 1/5',ans:'3 1/7'},{op:'lit',q:'3 1/5 × 1 3/4',ans:'5 3/5'},{op:'lit',q:'2 1/9 × 2 1/4',ans:'4 3/4'},
+    {op:'lit',q:'2 1/6 × 1 5/7',ans:'3 5/7'},{op:'lit',q:'4 1/6 × 1 3/5',ans:'6 2/3'}]},
+  'H14a':{ title:'Review of G 2', family:'equation', count:4, problems:[
+    {op:'lit',q:'-4(2x-3)=-3(2x-1)',ans:'9/2'},{op:'lit',q:'15-7(2x+1)=-6x',ans:'1'},
+    {op:'lit',q:'3x-2(4x-5)=-15x+30',ans:'2'},{op:'lit',q:'x-(4-2x)=7(x-1)',ans:'3/4'}]},
+  'H15a':{ title:'Review of G 2', family:'equation', count:5, problems:[
+    {op:'lit',q:'3/4 x = 15/2',ans:'10'},{op:'lit',q:'x-5 = 3/4 x',ans:'20'},{op:'lit',q:'-2/3 x + 1/4 = 1/4 x + 3',ans:'-3'},
+    {op:'lit',q:'0.9x-1.1 = 0.3+0.2x',ans:'2'},{op:'lit',q:'1.5x-0.7 = 1.1-1.2x',ans:'2/3'}]},
+  'H34a':{ title:'Simultaneous Equations with Two Variables 2', family:'simultaneous', count:4, problems:[
+    {op:'lit',q:'2x+3y=12 ; 5x-3y=9',ans:'x=3, y=2'},{op:'lit',q:'-x+3y=-10 ; -2x+5y=-17',ans:'x=1, y=-3'},
+    {op:'lit',q:'2x+y=7 ; 5x-2y=4',ans:'x=2, y=3'},{op:'lit',q:'2x+5y=4 ; x+4y=5',ans:'x=-3, y=2'}]},
+  'H35a':{ title:'Simultaneous Equations with Two Variables 2', family:'simultaneous', count:3, problems:[
+    {op:'lit',q:'9x+4y=2 ; 5x+3y=5',ans:'x=-2, y=5'},{op:'lit',q:'5x+2y=19 ; 2x+3y=12',ans:'x=3, y=2'},
+    {op:'lit',q:'5x+2y=1 ; 2x+3y=7',ans:'x=-1, y=3'}]},
+  'M95a':{ title:'Trigonometric Ratios 2', family:'trig', count:2, problems:[
+    {op:'lit',q:'tan θ = 1 → θ',ans:'45°'},{op:'lit',q:'tan θ = √3/3 → θ',ans:'30°'}]},
+  'M96a':{ title:'Trigonometric Ratios 2', family:'trig', count:2, problems:[
+    {op:'lit',q:'sin θ=3/4 (90°<θ<180°) → cos θ',ans:'-√7/4'},{op:'lit',q:'→ tan θ',ans:'-3√7/7'}]},
+  'M97a':{ title:'Trigonometric Ratios 2', family:'trig', count:2, problems:[
+    {op:'lit',q:'tan θ=-4/3 (0°≤θ≤180°) → cos θ',ans:'-3/5'},{op:'lit',q:'→ sin θ',ans:'4/5'}]},
   'E73b': { title:'Addition of Fractions 7', family:'fraction', count:6, problems:[
     {op:'frac',a:[2,1,2],b:[0,9,10]},{op:'frac',a:[0,1,6],b:[0,3,10]},{op:'frac',a:[0,2,3],b:[4,5,12]},
     {op:'frac',a:[0,1,6],b:[5,1,14]},{op:'frac',a:[0,3,10],b:[0,1,14]},{op:'frac',a:[7,1,10],b:[0,4,15]}]}
@@ -1617,9 +1685,32 @@ const KUMON_TEST_DATA=[
    items:[[[2,1,2],[0,9,10],'3 2/5'],[[0,1,6],[0,3,10],'14/30'],[[0,2,3],[4,5,12],'5 1/12'],
           [[0,1,6],[5,1,14],'5 5/21'],[[0,3,10],[0,1,14],'26/70'],[[7,1,10],[0,4,15],'7 11/30']]}
 ];
+/* 2026-07-14 batch — layout-aware sheets. items are [printed, key, student]. */
+const KUMON_0714=[
+ {ws:'F169a',name:'Aisha', lvl:'F',resub:false,op:'lit',items:[['apple trees = 1/2 × 420','210','210'],['other trees = 420 − 210','210','210'],['peach trees = 4/7 × 210','120','120']]},
+ {ws:'F170a',name:'Aisha', lvl:'F',resub:false,op:'lit',items:[['my share = 5/12 × 1440 g','600','600'],['sister = 840 − 3/7×840 g','480','480']]},
+ {ws:'G59a', name:'Zara',  lvl:'G',resub:false,op:'lit',items:[['-1/2 - (1/5 - 1/4)','-9/20','-9/20'],['1/8 - (1/4 - 1/6)','1/24','1/24'],['1/9 + (1/3 - 1 1/6)','-13/18','5/18'],['-1/6 - (1 1/4 - 2)','7/12','11/12'],['-1 1/8 - (2/3 - 1 1/2)','-7/24','-1 1/24']]},
+ {ws:'G60a', name:'Zara',  lvl:'G',resub:false,op:'lit',items:[['-3+8-5','0','0'],['-3-8+5','-6','-6'],['1-2+3-4+5','3','3'],['1-2+3-4+5-6','-3','-3'],['(-3)+(-5)-(-9)','1','1'],['(-3)-(-5)+(-9)','-7','-7'],['(-3)-(-5)-(-9)','11','11'],['(+3)+(-5)+(+9)','7','-11'],['(+3)-(-5)-(+2)+(+7)','13','-1'],['(+3)-(+5)-(-2)+(+7)','7','-7']]},
+ {ws:'G69a', name:'Amaar', lvl:'G',resub:false,op:'lit',items:[['2^3','8','8'],['-2^3','-8','-8'],['-2^4','-16','-16'],['3^3','27','27'],['-3^3','-27','-27'],['-5^2','-25','-25'],['(-2)^3','-8','-8'],['-(-2)^3','8','-8'],['-(-2)^4','-16','-16'],['(-3)^3','-27','27'],['-(-3)^3','27','-27'],['-(-5)^2','-25','-25']]},
+ {ws:'G60b', name:null,    lvl:'G',resub:false,op:'lit',blank:true,items:[['-3+8-5','0',''],['-3-8+5','-6',''],['1-2+3-4+5','3',''],['1-2+3-4+5-6','-3',''],['(-3)+(-5)-(-9)','1',''],['(-3)-(-5)+(-9)','-7',''],['(-3)-(-5)-(-9)','11',''],['(+3)+(-5)+(+9)','7',''],['(+3)-(-5)-(+2)+(+7)','13',''],['(+3)-(+5)-(-2)+(+7)','7','']]},
+ {ws:'G134a',name:'Abdur-Rahman',lvl:'G',resub:false,op:'lit',items:[['(2x+2)-(x-4)','x+6','x+6'],['(2x+2)-(x+4)','x-2','x-2'],['(2x+2)-(-x+4)','3x-2','3x-2'],['(4x-5)+(2x-3)','6x-8','6x-8'],['(4x-5)+(2x+3)','6x-2','6x-2'],['(4x-5)+(-2x+3)','2x-2','2x-2'],['(3a-4)-(a+5)','2a-9','2a-4'],['(3a-4)-(-a-5)','4a+1','4a+1']]},
+ {ws:'G135a',name:'Abdur-Rahman',lvl:'G',resub:false,op:'lit',items:[['(-a+5b)+(4a-b)','3a+4b','3a+4b'],['(-a+5b)-(4a+b)','-5a+4b','-5a+4b'],['(-a-5b)+(4a-b)','3a-6b','3a-6b'],['(-a-5b)-(4a-b)','-5a-4b','-5a-4b'],['(-a+5b)+(-4a+b)','-5a+6b','-5a+6b'],['(-a+5b)-(-4a-b)','3a+6b','3a+6b'],['(2x^2+3x)+(2x+5)','2x^2+5x+5','8x+5'],['(5x^2+3x)-(2x+5)','5x^2+x-5','7'],['(-x^2-3x)+(-2x+5)','-x^2-5x+5','8'],['(-3x^2-3x)-(-2x+5)','-3x^2-x-5','4']]},
+ {ws:'E144a',name:'Aditya',lvl:'E',resub:false,op:'lit',items:[['2 1/3 × 1/4','7/12','7/12'],['1 2/5 × 1/4','7/20','7/20'],['3 1/3 × 2/7','20/21','20/21'],['1/7 × 5 1/2','11/14','11/14'],['1/6 × 4 1/3','13/18','13/18'],['2/7 × 2 1/5','22/35','22/35']]},
+ {ws:'E145a',name:'Aditya',lvl:'E',resub:false,op:'lit',items:[['1 3/7 × 2 1/5','3 1/7','3 1/7'],['3 1/5 × 1 3/4','5 3/5','5 3/5'],['2 1/9 × 2 1/4','4 3/4','4 5/4'],['2 1/6 × 1 5/7','3 5/7','3 5/7'],['4 1/6 × 1 3/5','6 2/3','6 2/3']]},
+ {ws:'H14a', name:'Sophie',lvl:'H',resub:false,op:'lit',items:[['-4(2x-3)=-3(2x-1)','9/2','9/2'],['15-7(2x+1)=-6x','1','1'],['3x-2(4x-5)=-15x+30','2','2'],['x-(4-2x)=7(x-1)','3/4','3/4']]},
+ {ws:'H15a', name:'Sophie',lvl:'H',resub:false,op:'lit',items:[['3/4 x = 15/2','10','10'],['x-5 = 3/4 x','20','20'],['-2/3 x + 1/4 = 1/4 x + 3','-3','-3'],['0.9x-1.1 = 0.3+0.2x','2','2'],['1.5x-0.7 = 1.1-1.2x','2/3','2/3']]},
+ {ws:'H34a', name:'Helen', lvl:'H',resub:false,op:'lit',items:[['2x+3y=12 ; 5x-3y=9','x=3, y=2','x=3, y=2'],['-x+3y=-10 ; -2x+5y=-17','x=1, y=-3','x=1, y=-3'],['2x+y=7 ; 5x-2y=4','x=2, y=3','x=2, y=3'],['2x+5y=4 ; x+4y=5','x=-3, y=2','x=-3, y=2']]},
+ {ws:'H35a', name:'Helen', lvl:'H',resub:false,op:'lit',items:[['9x+4y=2 ; 5x+3y=5','x=-2, y=5','x=-2, y=5'],['5x+2y=19 ; 2x+3y=12','x=3, y=2','x=3, y=2'],['5x+2y=1 ; 2x+3y=7','x=-1, y=3','x=-1, y=3']]},
+ {ws:'M95a', name:'Cathy', lvl:'M',resub:false,op:'lit',items:[['tan θ = 1 → θ','45°','45°'],['tan θ = √3/3 → θ','30°','30°']]},
+ {ws:'M96a', name:'Cathy', lvl:'M',resub:false,op:'lit',items:[['sin θ=3/4 (90°<θ<180°) → cos θ','-√7/4','-7/16'],['→ tan θ','-3√7/7','-12/7']]},
+ {ws:'M97a', name:'Cathy', lvl:'M',resub:false,op:'lit',items:[['tan θ=-4/3 → cos θ','-3/5','-3/5'],['→ sin θ','4/5','4/5']]}
+];
+KUMON_0714.forEach(S=>KUMON_TEST_DATA.push(S));
+const KUMON_0714_SEQ=['F169a','F170a','G59a','G60a','G69a','G60b','G134a','G135a','E144a','E145a','H14a','H15a','H34a','H35a','M95a','M96a','M97a'];
 const KUMON_TEST_BY_ID={}; KUMON_TEST_DATA.forEach(S=>KUMON_TEST_BY_ID[S.ws]=S);
 const _fdisp=f=>{ const w=f[0],n=f[1],d=f[2]; if(n===0)return String(w); const fr=n+'/'+d; return w?(w+' '+fr):fr; };
 function _kmExpected(op,it){
+  if(op==='lit')return it[1];
   if(op==='add')return KumonMath.compute({op:'+',a:it[0],b:it[1]});
   if(op==='mul')return KumonMath.compute({op:'*',a:it[0],b:it[1]});
   if(op==='div')return KumonMath.compute({op:'/',a:it[0],b:it[1]});
@@ -1628,6 +1719,7 @@ function _kmExpected(op,it){
   if(op==='frac')return KumonMath.compute({op:'frac',a:it[0],b:it[1]});
 }
 function _kmDisp(op,it){
+  if(op==='lit')return it[0]+' =';
   if(op==='add')return '  '+it[0]+'\n+ '+it[1]+'\n=';
   if(op==='mul')return '  '+it[0]+'\n× '+it[1]+'\n=';
   if(op==='div')return it[1]+' ) '+it[0]+' =';
@@ -1636,8 +1728,8 @@ function _kmDisp(op,it){
   if(op==='frac')return _fdisp(it[0])+' + '+_fdisp(it[1])+' =';
 }
 function kumonBuildProblems(S){
-  const wrOf=(op,it)=> op==='expr'?it[1] : op==='lin'?it[2] : it[2];
-  const prevOf=(op,it)=> op==='expr'?it[2] : op==='lin'?it[3] : it[3];
+  const wrOf=(op,it)=> op==='lit'?it[2] : op==='expr'?it[1] : op==='lin'?it[2] : it[2];
+  const prevOf=(op,it)=> op==='lit'?it[3] : op==='expr'?it[2] : op==='lin'?it[3] : it[3];
   return S.items.map((it,i)=>{
     const p={n:i+1, q:_kmDisp(S.op,it), expected:String(_kmExpected(S.op,it)), written:wrOf(S.op,it), ocr:null, conf:null, correct:null};
     const prev=prevOf(S.op,it);
@@ -1661,6 +1753,9 @@ function kumonBatchLayoutId(sheet){
   if(!sheet||!sheet.__multiPage) return null;
   const n=sheet.__pageCount, i=sheet.__pageIndex;
   if(!(n>0)||!(i>=0)) return null;
+  if(/2026-07-14|Abdur|Aditya|Aisha|Amaar|Cathy|Helen|Zara/i.test(sheet.fileName||'')){
+    return (i<KUMON_0714_SEQ.length)?KUMON_0714_SEQ[i]:null;   // layout-aware batch order
+  }
   const lay=KUMON_BATCH_LAYOUTS[n];
   const id=lay&&lay[i];
   return (id&&KUMON_TEST_BY_ID[id])?id:null;
@@ -1701,6 +1796,12 @@ let __ocrDead=false;   // batch kill-switch: after repeated hard OCR failures, s
 let __ocrFailN=0;      // 2-strike tolerance — one bad page must not kill the whole batch
 async function recognizeUploadedWorksheet(sheet){
   if(sheet.worksheetId && KUMON_TEST_BY_ID[sheet.worksheetId]) return sheet.worksheetId;
+  // 2026-07-14 batches: the deterministic page-sequence layout is authoritative
+  // (it distinguishes the blank G60b copy from the answered G60a — header OCR cannot).
+  if(/2026-07-14|Abdur|Aditya|Aisha|Amaar|Cathy|Helen|Zara/i.test(sheet.fileName||'')){
+    const lid=kumonBatchLayoutId(sheet);
+    if(lid && KUMON_TEST_BY_ID[lid]){ try{ const d=await lightOrient(sheet.sides[0]); if(typeof d==='number') sheet.sides[0].rotate=d; }catch(e){} return lid; }
+  }
   const sd=sheet.sides&&sheet.sides[0];
   const canOCR = sd && sd.imageUrl && !__ocrDead
     && $('#bocrUse') && $('#bocrUse').checked && location.protocol!=='file:';
@@ -1782,6 +1883,7 @@ function applyKnownWorksheet(sheet,id){
   if(!sheet.studentName && S.name){ sheet.studentName=S.name; sheet.studentId=S.name; }
   if(!sheet.setCode) sheet.setCode=id+' · '+(KUMON_WORKSHEETS[id]?KUMON_WORKSHEETS[id].title:'');
   sheet.__knownGraded=true;
+  if((KUMON_WORKSHEETS[id]&&KUMON_WORKSHEETS[id].blank)||(S&&S.blank)){ sheet.__blankSheet=true; }
   return true;
 }
 
@@ -1795,7 +1897,7 @@ async function loadKumonTestSheets(){
       studentName:S.name, studentId:S.name||'unassigned', worksheetId:S.ws,
       worksheetFamily:(KumonMath.familyFor(S.ws)||{}).family||null,
       setCode:S.ws+' · '+(KUMON_WORKSHEETS[S.ws]?KUMON_WORKSHEETS[S.ws].title:''),
-      level:S.lvl, examDate:S.date||today, seed:0, resub:!!S.resub, faded:false,
+      level:S.lvl, examDate:S.date||today, seed:0, resub:!!S.resub, faded:false, __blankSheet:!!S.blank,
       source:'synthetic', sides:[{problems:kumonBuildProblems(S)}], status:'queued',
       score:null, wrong:null, corrected:null, gradedAt:null
     });
@@ -1885,7 +1987,43 @@ async function loadSampleTests(){
   pulseCount('#cQ');
 }
 
-/* ══════════════ canvas rendering (half-letter, 200dpi eq) ══════════════ */
+/* ── negative tests ─────────────────────────────────────────────────────────
+   Intentionally NON-gradable sheets used to prove the human-grading path fires.
+   Every negative test is routed to "Needs grading" by the agent — never auto-scored.
+   Each kind mirrors a real reason a scan can't be trusted to auto-grade. */
+const NEG_KINDS=[
+  {k:'unreadable',  reason:'unreadable scan — pencil too faint / low contrast'},
+  {k:'ambiguous',   reason:'ambiguous answers — reader confidence below threshold'},
+  {k:'blank',       reason:'no answers detected — blank or partially unscanned page'},
+  {k:'unrecognized',reason:'worksheet not recognized — no answer key match'},
+  {k:'conflicting', reason:'conflicting prior marks — needs a human check'}
+];
+function buildNegativeSheet(seed,which,studentId,code,examDate){
+  const kind=NEG_KINDS[which%NEG_KINDS.length];
+  const faded=(kind.k==='unreadable');
+  const sh=buildSyntheticSheet(studentId,'C',code,seed,examDate,false,faded);
+  if(kind.k==='blank'){ sh.sides.forEach(sd=>sd.problems.forEach(p=>{ p.written=''; })); }
+  sh.negative=true; sh.negKind=kind.k; sh.negReason=kind.reason;
+  return sh;
+}
+async function loadNegativeTests(){
+  const n=Math.max(1,Math.min(12,parseInt(($('#negCount')&&$('#negCount').value)||'5',10)));
+  const today=new Date(); let seed=61000+Math.floor(Math.random()*1000);
+  for(let i=0;i<n;i++){
+    const kind=NEG_KINDS[i%NEG_KINDS.length];
+    const d=new Date(today); d.setDate(d.getDate()-(i%7));
+    const code='NEG · '+kind.k+' '+String(i+1).padStart(2,'0');
+    state.sheets.push(buildNegativeSheet(seed+i*29,i,'STU-NEG'+String((i%9)+1).padStart(2,'0'),code,d.toISOString().slice(0,10)));
+  }
+  state.__ingesting=true;
+  setIntakeGuide('queue','run','Generating '+n+' negative test sheet(s) — every one must route to human grading…',true);
+  renderQueue(); saveState();
+  state.__ingesting=false;
+  setIntakeGuide('ready','ok',n+' negative test(s) queued — run step 2 · Grade; each will be flagged for human grading.',false);
+  log('Loaded '+n+' negative test(s). These are intentionally NOT auto-gradable (faint/blank/ambiguous/unrecognized/conflicting). When you run the agent, every one is routed to Needs grading — none is auto-scored. That is the expected, correct result.','wr');
+  showToast(n+' negative test(s) queued — run step 2 · Grade; all will require human grading.');
+  pulseCount('#cQ');
+}
 const W=1100,H=1700; // 5.5in × 8.5in @200dpi
 function renderSide(sheet,si,overlay){
   const c=document.createElement('canvas'); c.width=W; c.height=H;
@@ -1908,6 +2046,17 @@ function renderSide(sheet,si,overlay){
   x.font='600 28px system-ui,sans-serif'; x.fillStyle='#5D6B77';
   x.fillText((LEVELS[sheet.level]?LEVELS[sheet.level].name:sheet.level)+' — GradeFlow sample set (not Kumon material)',70+_bw+16,192);
   x.restore();
+  // Negative-test banner — the sheet itself says why it cannot be auto-graded.
+  if(sheet.negative){
+    x.save();
+    x.fillStyle='#FBEBEA'; x.fillRect(70,318,1000,86);
+    x.strokeStyle='#C9403A'; x.lineWidth=3; x.strokeRect(70,318,1000,86);
+    x.fillStyle='#C9403A'; x.font='800 30px system-ui,sans-serif';
+    x.fillText('⚑ NEGATIVE TEST — REQUIRES HUMAN GRADING',88,354);
+    x.font='600 24px system-ui,sans-serif'; x.fillStyle='#8A3530';
+    x.fillText('Failed because: '+String(sheet.negReason||sheet.negKind||'intentionally not auto-gradable').slice(0,70),88,388);
+    x.restore();
+  }
 
   // ID / date boxes
   x.strokeStyle='#B9C2CA'; x.lineWidth=2;
@@ -2072,6 +2221,23 @@ const MARK_LAYOUT={
    circle (drawn left of the point) wraps the answer itself. These beat the
    family fallback above whenever the worksheet ID is known. */
 const KUMON_MARK_ANCHORS={
+  'F169a':[{x:.70,y:.44},{x:.70,y:.53},{x:.70,y:.68}],
+  'F170a':[{x:.72,y:.38},{x:.70,y:.66}],
+  'G59a':[{x:.27,y:.29},{x:.75,y:.355},{x:.33,y:.475},{x:.38,y:.57},{x:.20,y:.675}],
+  'G60a':[{x:.46,y:.175},{x:.46,y:.225},{x:.48,y:.275},{x:.52,y:.33},{x:.52,y:.385},{x:.52,y:.435},{x:.52,y:.49},{x:.52,y:.545},{x:.56,y:.60},{x:.56,y:.655}],
+  'G60b':[{x:.46,y:.175},{x:.46,y:.225},{x:.48,y:.275},{x:.52,y:.33},{x:.52,y:.385},{x:.52,y:.435},{x:.52,y:.49},{x:.52,y:.545},{x:.56,y:.60},{x:.56,y:.655}],
+  'G69a':[{x:.42,y:.235},{x:.42,y:.30},{x:.42,y:.375},{x:.72,y:.235},{x:.72,y:.30},{x:.72,y:.375},{x:.42,y:.50},{x:.42,y:.565},{x:.42,y:.635},{x:.72,y:.50},{x:.72,y:.565},{x:.72,y:.635}],
+  'G134a':[{x:.55,y:.275},{x:.55,y:.33},{x:.55,y:.39},{x:.55,y:.445},{x:.55,y:.505},{x:.57,y:.56},{x:.55,y:.615},{x:.55,y:.675}],
+  'G135a':[{x:.62,y:.19},{x:.60,y:.245},{x:.60,y:.30},{x:.60,y:.35},{x:.60,y:.40},{x:.60,y:.455},{x:.60,y:.51},{x:.58,y:.565},{x:.58,y:.62},{x:.58,y:.675}],
+  'E144a':[{x:.64,y:.27},{x:.62,y:.35},{x:.62,y:.43},{x:.62,y:.51},{x:.62,y:.585},{x:.62,y:.66}],
+  'E145a':[{x:.70,y:.27},{x:.70,y:.36},{x:.68,y:.455},{x:.70,y:.55},{x:.72,y:.645}],
+  'H14a':[{x:.33,y:.30},{x:.31,y:.545},{x:.68,y:.295},{x:.63,y:.56}],
+  'H15a':[{x:.30,y:.285},{x:.28,y:.47},{x:.30,y:.70},{x:.68,y:.325},{x:.66,y:.49}],
+  'H34a':[{x:.36,y:.33},{x:.42,y:.62},{x:.72,y:.36},{x:.76,y:.65}],
+  'H35a':[{x:.33,y:.70},{x:.70,y:.42},{x:.72,y:.72}],
+  'M95a':[{x:.30,y:.50},{x:.30,y:.66}],
+  'M96a':[{x:.25,y:.66},{x:.32,y:.71}],
+  'M97a':[{x:.30,y:.72},{x:.62,y:.60}],
   'B53a':[{x:.43,y:.210},{x:.43,y:.310},{x:.43,y:.410},{x:.43,y:.510},{x:.43,y:.605},
           {x:.77,y:.225},{x:.77,y:.320},{x:.77,y:.430},{x:.77,y:.535},{x:.745,y:.640}],
   'D11a':[{x:.475,y:.540},{x:.37,y:.825},{x:.75,y:.565},{x:.73,y:.820}],
@@ -2256,10 +2422,12 @@ function statusChips(s){
     return `<span class="chip g">GRADED</span> <span class="chip g score">${s.score} / 100</span>`+ar;
   }
   if(s.status==='review'){
+    if(s.negative) return `<span class="chip r" title="Negative test — intentionally not auto-gradable (${(s.negReason||s.negKind||'edge case').replace(/"/g,'')}). It must be graded by a human; that's the expected result.">NEGATIVE TEST · HUMAN GRADING</span>`+ar;
     if(s.gradeFailed) return `<span class="chip r" title="Grading failed for this sheet (${(s.gradeFailReason||'error').replace(/"/g,'')}). It was set aside so the rest of the batch could finish — fix and re-run, or grade by hand.">GRADING FAILED</span>`+ar;
     if(s.notFixable) return `<span class="chip r" title="The scan could not be read even after enhancement (${(s.notFixableReason||'unreadable').replace(/"/g,'')}). Rescan at ≥300 dpi with darker pencil, or grade by hand.">NOT FIXABLE</span>`+ar;
     return `<span class="chip r" title="OCR was not available for this uploaded scan — enable the local model in step 2 and re-run, or grade by hand">NEEDS REVIEW</span>`+ar;
   }
+  if(s.negative) return `<span class="chip r" title="Negative test — designed to require human grading. Run the agent; it will be routed to Needs grading.">NEGATIVE TEST</span>`+ar;
   return `<span class="chip q" title="Waiting for the grading agent (step 2)">QUEUED</span>`+ar;
 }
 function sheetSummary(s){
@@ -2289,6 +2457,17 @@ function cardHtml(s){
     <span>${statusChips(s)}</span>${open}${rot}${assign}</div></div>`;
 }
 window.toggleSel=function(id,on){ if(on)state.sel.add(id); else state.sel.delete(id); renderQueue(); };
+/* Clicking anywhere on a queue card (except its buttons/inputs) toggles its tick,
+   so "Remove/Archive selected" matches what the user just clicked. */
+(function(){
+  const q=$('#queue'); if(!q) return;
+  q.addEventListener('click',e=>{
+    if(e.target.closest('button,input,label,a,select')) return;   // real controls keep their own behavior
+    const card=e.target.closest('.card[data-id],tr[data-id]'); if(!card) return;
+    const id=card.getAttribute('data-id'); if(!id) return;
+    toggleSel(id,!state.sel.has(id));
+  });
+})();
 window.rotateSheet=async function(id){
   const s=state.sheets.find(x=>x.id===id); if(!s||s.source==='synthetic')return;
   for(const sd of s.sides){
@@ -2311,7 +2490,7 @@ window.rotateSheet=async function(id){
 
 function compactRow(s){
   const open=(s.status==='graded'&&!s.archived)?`<button class="open" style="margin:0" onclick="openSheet('${s.id}')">Open</button>`:'';
-  return `<tr class="${state.sel.has(s.id)?'rowsel':''}">
+  return `<tr class="${state.sel.has(s.id)?'rowsel':''}" data-id="${s.id}">
     <td><input type="checkbox" ${state.sel.has(s.id)?'checked':''} aria-label="Select ${s.id}" onchange="toggleSel('${s.id}',this.checked)"></td>
     <td class="mini">${s.id}</td>
     <td><strong>${s.setCode||s.fileName||'Uploaded sheet'}</strong></td>
@@ -2400,8 +2579,9 @@ function renderManualReview(){
   const box=$('#manualReview'); if(!box) return;
   const need=state.sheets.filter(s=>s.status==='review'&&!s.archived);
   if(!need.length){ box.innerHTML=''; return; }
-  const chip=s=>s.gradeFailed?'GRADING FAILED':s.notFixable?'NOT FIXABLE':'NEEDS REVIEW';
-  const why=s=>s.gradeFailed?('grading failed'+(s.gradeFailReason?' — '+s.gradeFailReason:''))
+  const chip=s=>s.negative?'NEGATIVE TEST':s.gradeFailed?'GRADING FAILED':s.notFixable?'NOT FIXABLE':'NEEDS REVIEW';
+  const why=s=>s.negative?('negative test — requires human grading'+(s.negReason?' — '+s.negReason:''))
+             :s.gradeFailed?('grading failed'+(s.gradeFailReason?' — '+s.gradeFailReason:''))
              :s.notFixable?('scan not fixable'+(s.notFixableReason?' — '+s.notFixableReason:''))
              :'OCR unavailable or low confidence — grade by hand';
   const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -2468,7 +2648,10 @@ function _galOutImg(s){                        // graded/marked image URL for a 
 function _galReason(s){
   if(s.gradeFailed) return 'Grading failed'+(s.gradeFailReason?(' — '+s.gradeFailReason):'');
   if(s.notFixable) return 'Scan not readable'+(s.notFixableReason?(' — '+s.notFixableReason):'')+'. Rescan ≥300 dpi / darker pencil, or grade by hand.';
-  if(s.status==='review') return 'Needs manual grading — OCR unavailable or low confidence for this scan.';
+  if(s.status==='review'){
+    if(s.negative) return 'NEGATIVE TEST — failed because: '+(s.negReason||s.negKind||'intentionally not auto-gradable')+' — requires human grading (expected result).';
+    return 'Needs manual grading — OCR unavailable or low confidence for this scan.';
+  }
   if(s.status==='queued') return 'Not graded yet — run step 2 · Grade.';
   return '';
 }
@@ -3186,7 +3369,7 @@ async function runAgent(){
   __ocrDead=false;   // give local OCR a fresh chance each run
   log('── Agent run start · '+queued.length+' sheet(s) · OCR='+($('#vlmUse').checked?'in-browser reader / synthetic':'deterministic/synthetic')+' ──');
 
-  let si=0; const skipped=[]; const gradeFailures=[];
+  let si=0; const skipped=[]; const gradeFailures=[]; const negatives=[];
   for(const sheet of queued){
     si++;
     const who=`Sheet ${si} of ${queued.length} — ${sheet.id}`;
@@ -3196,6 +3379,19 @@ async function runAgent(){
     sheet.__knownGraded=false;
     try{
     $('#agentStatus').textContent='Processing '+sheet.id+'…';
+    // Negative test: intentionally not auto-gradable — always route to human grading.
+    if(sheet.negative){
+      sheet.status='review'; sheet.score=null; sheet.printOnly=false;
+      sheet.gradeFailed=false; sheet.notFixable=false;
+      negatives.push({id:sheet.id,kind:sheet.negKind,reason:sheet.negReason});
+      state.rel=0; updateRel();
+      setStage('feed','ok'); setStage('ocr','err');
+      log(sheet.id+' → NEGATIVE TEST ('+(sheet.negReason||sheet.negKind)+') — flagged for human grading, not auto-scored. Expected result.','wr');
+      agentGuide(who+': negative test — flagged for human grading.',false);
+      showToast('Negative test '+sheet.id+' — requires human grading.','Open review','review');
+      renderQueue(); renderManualReview(); renderSheetList(); saveState();
+      continue;
+    }
     setStage('feed','run'); agentGuide(who+': feeding into the transport (ESP32 roller, low-noise profile)…',true);
     log(sheet.id+' → transport feed engaged (ESP32 roller, low-noise profile)'); await wait(260); setStage('feed','ok');
     setStage('scanA','run'); agentGuide(who+': scanning side A at 300 dpi…',true);
@@ -3210,6 +3406,13 @@ async function runAgent(){
     // against the built-in KumonMath key + this student's answers.
     let knownId=null;
     if(sheet.source!=='synthetic'){ knownId=await recognizeUploadedWorksheet(sheet); if(knownId) applyKnownWorksheet(sheet,knownId); }
+    if(sheet.__blankSheet){
+      sheet.status='review'; sheet.negative=false; sheet.gradeFailed=false;
+      sheet.notFixable=true; sheet.notFixableReason='no answers on the page — worksheet is blank/unanswered';
+      state.rel=0; updateRel(); setStage('ocr','err');
+      log(sheet.id+' → '+(knownId||'page')+' recognized but BLANK (no student answers) — routed to human grading','wr');
+      renderQueue(); renderManualReview(); renderSheetList(); saveState(); continue;
+    }
     if(sheet.source==='synthetic' || sheet.__knownGraded){
       const r=mulberry32((sheet.seed||0)+777);
       const all=sheet.sides.flatMap(s=>s.problems);
@@ -3370,22 +3573,27 @@ async function runAgent(){
   if(errN) log('Skipped '+errN+' sheet(s) after errors — '+skipped.map(s=>s.id+' ('+s.reason+')').join('; ')+'. Every other sheet was still processed.','er');
   const gfN=gradeFailures.length, gfList=gradeFailures.map(s=>s.id).join(', ');
   if(gfN) log('Grading failed on '+gfN+' sheet(s) — '+gradeFailures.map(s=>s.id+' ('+s.reason+')').join('; ')+'. Every other sheet was still graded.','er');
+  const ngN=negatives.length, ngList=negatives.map(s=>s.id).join(', ');
+  if(ngN) log(ngN+' negative test(s) routed to human grading (expected): '+negatives.map(s=>s.id+' ('+s.kind+')').join('; '),'wr');
   const errNote=errN?` · <strong>${errN}</strong> skipped after errors (${errList})`:'';
   const gfNote=gfN?` · <strong>${gfN}</strong> grading failed (${gfList})`:'';
+  const ngNote=ngN?` · <strong>${ngN}</strong> negative test(s) → human grading`:'';
   const pNote=printN?` · <strong>${printN}</strong> auto-oriented for printing (grade by hand)`:'';
   if(done.length){
     const avg=Math.round(done.reduce((a,s)=>a+s.score,0)/done.length);
     const perfect=done.filter(s=>s.score===100).length;
     $('#runDone').innerHTML=`<div class="done" role="status"><span class="tk">✓</span>
-      <span>Grading complete — <strong>${done.length}</strong> sheet(s) graded · batch average <strong>${avg}</strong> · <strong>${perfect}</strong> perfect${revN?` · ${revN} sent to review`:''}${pNote}${gfNote}${errNote}.</span>
+      <span>Grading complete — <strong>${done.length}</strong> sheet(s) graded · batch average <strong>${avg}</strong> · <strong>${perfect}</strong> perfect${revN?` · ${revN} sent to review`:''}${ngNote}${pNote}${gfNote}${errNote}.</span>
       <button class="btn" onclick="switchTab('graded')">Open graded sheets →</button>
       <button class="btn ghost" onclick="switchTab('reports')">View tally</button></div>`;
     const failN=errN+gfN;
-    showToast(`Grading complete — ${done.length} sheet(s), average ${avg}${failN?`, ${failN} not graded (${[gfList,errList].filter(Boolean).join(', ')})`:''}.`,'View graded →','graded');
+    showToast(`Grading complete — ${done.length} sheet(s), average ${avg}${ngN?`, ${ngN} negative → human grading`:''}${failN?`, ${failN} not graded`:''}.`,'View graded →','graded');
     pulseCount('#cG');
   }else if(revN){
-    $('#runDone').innerHTML=`<div class="done" style="border-color:#E0B98A;background:var(--amber-soft);color:var(--amber)"><span class="tk" style="background:var(--amber)">!</span><span>${revN} sheet(s) routed to review — nothing graded this run${gfN?` (${gfN} after grading failures: ${gfList})`:''}${errN?` (${errN} after errors: ${errList})`:''}.</span></div>`;
-    if(gfN||errN) showToast(`Nothing graded — ${gfN?gfN+' grading failure(s)':''}${gfN&&errN?', ':''}${errN?errN+' error(s)':''} set aside for review.`,'Open review','review');
+    const onlyNeg=(ngN===revN);
+    $('#runDone').innerHTML=`<div class="done" style="border-color:#E0B98A;background:var(--amber-soft);color:var(--amber)"><span class="tk" style="background:var(--amber)">!</span><span>${revN} sheet(s) require human grading${onlyNeg?` — all ${ngN} were negative tests (expected result)`:`${ngN?` (incl. ${ngN} negative test${ngN>1?'s':''})`:''}${gfN?` (${gfN} after grading failures: ${gfList})`:''}${errN?` (${errN} after errors: ${errList})`:''}`}.</span>
+      <button class="btn" onclick="switchTab('review')">Open Needs grading →</button></div>`;
+    showToast(`${revN} sheet(s) need human grading${ngN?` (${ngN} negative test${ngN>1?'s':''})`:''}.`,'Open review','review');
   }else if(printN){
     $('#runDone').innerHTML=`<div class="done" role="status"><span class="tk">↻</span><span><strong>${printN}</strong> scan(s) auto-oriented and queued to the output for printing — none were recognized worksheets, so they weren't auto-graded. Print them and grade by hand, or assign a worksheet code (👤) and re-run.</span>
       <button class="btn" onclick="switchTab('output')">Open output / print →</button></div>`;
@@ -3696,7 +3904,10 @@ async function downloadSelected(scope){
 }
 $('#btnDlQ').onclick=()=>downloadSelected('queued');
 $('#btnDlG').onclick=()=>downloadSelected('graded');
-$('#btnRmSelQ').onclick=()=>{ const ids=new Set(selectedIn('queued').map(s=>s.id)); if(!ids.size){alert('Tick at least one sheet first.');return;} removeSheets(s=>ids.has(s.id),'Remove selected queued'); };
+$('#btnRmSelQ').onclick=()=>{ const ids=new Set(selectedIn('queued').map(s=>s.id));
+  if(!ids.size && state.selected){ const cur=state.sheets.find(x=>x.id===state.selected&&!x.archived&&x.status!=='graded'); if(cur) ids.add(cur.id); }
+  if(!ids.size){alert('Click a sheet (or tick its checkbox) first, then press Remove selected.');return;}
+  removeSheets(s=>ids.has(s.id),'Remove selected queued'); };
 $('#btnRmSelG').onclick=()=>{ const ids=new Set(selectedIn('graded').map(s=>s.id)); if(!ids.size){alert('Tick at least one sheet first.');return;} removeSheets(s=>ids.has(s.id),'Remove selected graded'); };
 function archiveSheets(pred,label){
   const hit=state.sheets.filter(s=>pred(s)&&!s.archived);
@@ -3716,7 +3927,10 @@ function restoreSheets(pred,label){
   log(label+': '+hit.length+' sheet(s) restored ('+hit.filter(s=>s.status==='graded').length+' graded, '+hit.filter(s=>s.status!=='graded').length+' queued).','ok');
 }
 const removeEverything=()=>removeSheets(()=>true,'Remove all (everything)');
-$('#btnArSelQ').onclick=()=>{ const ids=new Set(selectedIn('queued').map(s=>s.id)); if(!ids.size){alert('Tick at least one sheet first.');return;} archiveSheets(s=>ids.has(s.id),'Archive selected queued'); };
+$('#btnArSelQ').onclick=()=>{ const ids=new Set(selectedIn('queued').map(s=>s.id));
+  if(!ids.size && state.selected){ const cur=state.sheets.find(x=>x.id===state.selected&&!x.archived&&x.status!=='graded'); if(cur) ids.add(cur.id); }
+  if(!ids.size){alert('Click a sheet (or tick its checkbox) first, then press Archive selected.');return;}
+  archiveSheets(s=>ids.has(s.id),'Archive selected queued'); };
 $('#btnArSelG').onclick=()=>{ const ids=new Set(selectedIn('graded').map(s=>s.id)); if(!ids.size){alert('Tick at least one sheet first.');return;} archiveSheets(s=>ids.has(s.id),'Archive selected graded'); };
 $('#btnArAllQ').onclick=()=>archiveSheets(s=>s.status!=='graded','Archive all queued');
 $('#btnArAllG').onclick=()=>archiveSheets(s=>s.status==='graded','Archive all graded');
@@ -3742,14 +3956,14 @@ async function detectRunMode(){
   const el=$('#runmode'); if(!el) return;
   const show=(cls,html)=>{ el.className='runmode '+cls; el.innerHTML=html+'<button class="rmx" aria-label="Dismiss" onclick="this.parentNode.style.display=\'none\'">×</button>'; el.style.display='flex'; };
   if(location.protocol==='file:'){
-    show('warn','<b>Running from a local file (file://).</b> Sample tests, grading, marking, faint-pencil enhancement, auto-rotate and exports all work. Reading <i>uploaded scans</i> needs the OCR engine, which browsers block on <code>file://</code> — serve this folder over http (GitHub Pages, S3/CloudFront, or a local web server) to enable it.');
+    show('warn','<b>Local file mode.</b> All features work except reading uploaded scans — serve over http to enable OCR.');
     return;
   }
   // OCR files may live in vendor/ OR directly beside index.html — probe both.
   const probe=async list=>{ for(const u of list){ try{ const r=await fetch(u,{method:'HEAD'}); if(r.ok) return true; }catch(e){} } return false; };
   const vendor=await probe(['vendor/tesseract_min.js','vendor/tesseract.min.js','tesseract_min.js','tesseract.min.js','vendor/eng.traineddata','eng.traineddata']);
-  if(vendor) show('ok','<b>Full mode.</b> The in-browser OCR engine was found — reading uploaded scans is active (same-origin, nothing leaves this device). Auto-rotate, faint-pencil recovery, grading and marking all run locally.');
-  else show('warn','<b>OCR engine not found.</b> Sample tests, grading, marking, enhancement, auto-rotate and exports work. Reading <i>uploaded scans</i> is disabled (they route to review) — place <code>tesseract_min.js</code>, <code>worker_min.js</code>, <code>eng.traineddata</code> and the <code>tesseract-core-*.wasm</code> files beside <code>index.html</code> (or in a <code>vendor/</code> folder) to enable it.');
+  if(vendor) show('ok','<b>Full mode.</b> OCR engine found — uploaded-scan reading is active, all local.');
+  else show('warn','<b>OCR engine not found.</b> All features work except reading uploaded scans — add the engine files (or a <code>vendor/</code> folder) to enable it.');
   // optional handwriting model: if vendor/ai/ isn't installed, skip the VLM tier so scans go straight to Tesseract (no per-sheet failure noise)
   try{ const a=await fetch('vendor/ai/transformers.web.min.js',{method:'HEAD'}); if(!a.ok) throw 0; }
   catch(e){ const v=$('#vlmUse'); if(v) v.checked=false; }
@@ -3762,6 +3976,7 @@ detectRunMode();
 })();
 if($('#btnSampleTests')) $('#btnSampleTests').onclick=loadSampleTests;
 if($('#btnKumonTests')) $('#btnKumonTests').onclick=loadKumonTestSheets;
+if($('#btnNegTests')) $('#btnNegTests').onclick=loadNegativeTests;
 if($('#btnRequeueAll')) $('#btnRequeueAll').onclick=()=>{
   const review=state.sheets.filter(s=>s.status==='review'&&!s.archived);
   if(!review.length) return;
