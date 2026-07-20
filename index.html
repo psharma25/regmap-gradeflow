@@ -1867,7 +1867,7 @@ async function recognizeUploadedWorksheet(sheet){
             hurl=await canvasToUrl(hc,'image/png'); _freeCanvas(hc); hc=null;
             const w=await getBocrWorker();
             let data;
-            try{ ({data}=await w.recognize(hurl,{},{text:true})); }
+            try{ ({data}=await withTimeout(w.recognize(hurl,{},{text:true}),25000,'header OCR read')); }
             finally{ revokeUrl(hurl); hurl=null; }
             const t=(data.text||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
             const m=t.match(/([A-I])0*(\d{1,3})([AB])/);
@@ -3108,17 +3108,27 @@ async function getBocrWorker(){
   bocrLoadTried=true;
   await ensureTesseract();
   if($('#ocrDot')) $('#ocrDot').className='dot on';
-  // try worker/core/lang combinations until one initializes
+  // try worker/core/lang combinations until one initializes — each attempt is
+  // time-boxed and the whole search has a hard budget, so a stuck WASM load
+  // fails fast instead of freezing the batch mid-sheet.
   let lastErr;
+  const deadline=Date.now()+45000;
   for(const workerPath of OCR_WORKERS){
     for(const corePath of OCR_CORES){
       for(const langPath of OCR_LANGS){
+        if(Date.now()>deadline){ throw new Error('OCR engine start exceeded its 45s budget ('+(lastErr?lastErr.message:'no attempt succeeded')+')'); }
+        let wp=null;
         try{
-          const w=await Tesseract.createWorker('eng',1,{workerPath,corePath,langPath,gzip:false});
+          wp=Tesseract.createWorker('eng',1,{workerPath,corePath,langPath,gzip:false});
+          const w=await withTimeout(wp,20000,'OCR worker init ('+corePath+')');
           bocrWorker=w; bocrPaths=Object.assign(bocrPaths||{},{workerPath,corePath,langPath});
           try{ log('In-browser OCR ready · worker '+workerPath+' · core '+(corePath||'(root)')+' · lang '+(langPath||'(root)'),'ok'); }catch(_){}
           return w;
-        }catch(e){ lastErr=e; }
+        }catch(e){
+          lastErr=e;
+          // if the init eventually resolves after we gave up, shut it down
+          if(wp&&wp.then) wp.then(w=>{try{w.terminate();}catch(_){}}).catch(()=>{});
+        }
       }
     }
   }
@@ -3407,21 +3417,53 @@ async function bocrAttempt(sheet,who){
   try{ await orientForPrint(sheet,who); sheet.printOnly=true; }catch(e){}
   return false;   // never counts as an auto-graded read
 }
+/* Bound any step that could hang (WASM load, worker init, model read) so a
+   single stuck await can never freeze the batch — on timeout the step fails
+   like any other error, the sheet is marked, and the run continues. */
+function withTimeout(p,ms,label){
+  return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error((label||'step')+' timed out after '+Math.round(ms/1000)+'s')),ms))]);
+}
 async function runAgent(){
-  const queued=state.sheets.filter(s=>s.status==='queued'&&!s.archived);
-  if(!queued.length){ log('Nothing queued. Load the synthetic batch or upload scans in tab 1.','wr'); return; }
+  // Re-entry guard: one agent loop at a time. Anything queued while it runs
+  // is picked up automatically by the drain loop below — no second click.
+  if(runAgent.__running){ log('Agent is already running — newly queued sheets are graded automatically in this run.','wr'); return; }
+  let queued=state.sheets.filter(s=>s.status==='queued'&&!s.archived);
+  if(!queued.length && !state.__ingesting){ log('Nothing queued. Load the synthetic batch or upload scans in tab 1.','wr'); return; }
+  runAgent.__running=true;
   $('#btnRun').disabled=true;
   $('#runDone').innerHTML='';
-  const runIds=queued.map(s=>s.id);
+  const runIds=[];
   const useModel=false; // Ollama removed; in-browser reader is the default
   $('#jsonOut').innerHTML='';
   __ocrDead=false;   // give local OCR a fresh chance each run
-  log('── Agent run start · '+queued.length+' sheet(s) · OCR='+($('#vlmUse').checked?'in-browser reader / synthetic':'deterministic/synthetic')+' ──');
+  log('── Agent run start · '+(queued.length||'0 (intake in progress)')+' sheet(s) · OCR='+($('#vlmUse').checked?'in-browser reader / synthetic':'deterministic/synthetic')+' ──');
 
   let si=0; const skipped=[]; const gradeFailures=[]; const negatives=[];
+  try{
+  // ── drain loop: keep grading until the queue is empty AND intake is idle.
+  // Sheets ingested after the button press (large PDFs/ZIPs still reading,
+  // files dropped mid-run) are processed in the same run — the agent never
+  // stops early and waits to be asked to continue.
+  let idleSince=0;
+  while(true){
+    queued=state.sheets.filter(s=>s.status==='queued'&&!s.archived&&runIds.indexOf(s.id)<0);
+    if(!queued.length){
+      if(state.__ingesting){
+        if(!idleSince) idleSince=Date.now();
+        if(Date.now()-idleSince>120000){ log('Intake has been busy for 2 minutes with no new sheets — finishing this run. Anything ingested later just needs one more Run.','wr'); break; }
+        $('#agentStatus').textContent='Waiting for intake — grading continues automatically…';
+        agentGuide('Intake is still reading files; every new sheet is graded automatically in this run.',true);
+        await new Promise(r=>setTimeout(r,350));
+        continue;
+      }
+      break;                                   // queue empty, intake idle → done
+    }
+    idleSince=0;
+    if(runIds.length) log('↻ '+queued.length+' more sheet(s) queued during the run — continuing automatically (no extra click needed).','ok');
+    queued.forEach(s=>runIds.push(s.id));
   for(const sheet of queued){
     si++;
-    const who=`Sheet ${si} of ${queued.length} — ${sheet.id}`;
+    const who=`Sheet ${si} of ${runIds.length} — ${sheet.id}`;
     resetStages();
     sheet.notFixable=false; sheet.notFixableReason=null;   // clear stale flags on re-run
     sheet.gradeFailed=false; sheet.gradeFailReason=null;
@@ -3482,7 +3524,7 @@ async function runAgent(){
         let total=0;
         for(const sd of sheet.sides){
           await prepareSideForOcr(sd);            // auto-orient + faint-pencil enhance first
-          sd.problems=await vlmOcrSide(sd.procUrl||sd.imageUrl);
+          sd.problems=await withTimeout(vlmOcrSide(sd.procUrl||sd.imageUrl),90000,'in-browser model read');
           total+=sd.problems.length;
         }
         if(!total) throw new Error('model read no gradable problems');
@@ -3617,6 +3659,8 @@ async function runAgent(){
       continue;
     }
   }
+  }                                    // ── end drain loop
+  }finally{ runAgent.__running=false; }
 
   $('#agentStatus').textContent='Run complete.';
   agentGuide('Run complete — see the summary below, or open step 3 · Graded.',false);
