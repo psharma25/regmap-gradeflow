@@ -23,8 +23,11 @@ the correct answer for every wrong one:
     vendor/               in-browser OCR engine (Tesseract WASM, served same-origin)
       tesseract.min.js
       worker.min.js
-      core/               WASM cores (SIMD + fallback)
+      core/               primary WASM cores (LSTM: SIMD + non-SIMD) — loaded first
+      tesseract-core*.wasm.js   non-LSTM fallback cores (kept at vendor/ root)
       eng.traineddata     language data (fast variant)
+      ai/                 optional in-browser handwriting model runtime
+                          (transformers.js + ONNX Runtime WASM)
 
 Keep `vendor/` next to `index.html` — the OCR tier loads it same-origin.
 Without it the app still works fully for synthetic sheets; uploaded scans

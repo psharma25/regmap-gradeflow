@@ -1221,6 +1221,7 @@ body.dark .runmode.warn{background:#2a2410;color:#e3c874}
   // rule for each new level/topic as it comes.
   var FAMILIES = [
     { test: /^B\d/i, family: 'column-add',   op: '+', layout: 'stack2', label: 'Addition (column)' },
+    { test: /^A1(8[6-9]|90)/i, family: 'sub-inline', op: '-', layout: 'inline', label: 'Subtraction (horizontal)' },
     { test: /^A\d/i, family: 'column-add',   op: '+', layout: 'stack2', label: 'Addition (column)' },
     { test: /^C\d/i, family: 'mult-2x1',     op: '*', layout: 'stack2', label: 'Multiplication 2×1' },
     { test: /^D1\d/i,family: 'mult-2x2',     op: '*', layout: 'stack2', label: 'Multiplication 2×2' },
@@ -1603,6 +1604,22 @@ const KUMON_WORKSHEETS = {
     {op:'lit',q:'sin θ=3/4 (90°<θ<180°) → cos θ',ans:'-√7/4'},{op:'lit',q:'→ tan θ',ans:'-3√7/7'}]},
   'M97a':{ title:'Trigonometric Ratios 2', family:'trig', count:2, problems:[
     {op:'lit',q:'tan θ=-4/3 (0°≤θ≤180°) → cos θ',ans:'-3/5'},{op:'lit',q:'→ sin θ',ans:'4/5'}]},
+  /* A-series Subtraction 11 batch (2026-07-05 scans) — horizontal a − b = */
+  'A186a':{ title:'Subtraction 11 (From numbers up to 20)', family:'sub-inline', count:11, problems:[
+    {op:'-',a:10,b:3},{op:'-',a:10,b:4},{op:'-',a:10,b:7},{op:'-',a:10,b:5},{op:'-',a:10,b:9},
+    {op:'-',a:11,b:2},{op:'-',a:11,b:5},{op:'-',a:11,b:3},{op:'-',a:11,b:7},{op:'-',a:11,b:9},{op:'-',a:11,b:8}]},
+  'A187a':{ title:'Subtraction 11 (From numbers up to 20)', family:'sub-inline', count:11, problems:[
+    {op:'-',a:11,b:3},{op:'-',a:11,b:6},{op:'-',a:11,b:4},{op:'-',a:11,b:8},{op:'-',a:11,b:9},
+    {op:'-',a:12,b:2},{op:'-',a:12,b:5},{op:'-',a:12,b:3},{op:'-',a:12,b:6},{op:'-',a:12,b:8},{op:'-',a:12,b:9}]},
+  'A188a':{ title:'Subtraction 11 (From numbers up to 20)', family:'sub-inline', count:11, problems:[
+    {op:'-',a:12,b:3},{op:'-',a:12,b:7},{op:'-',a:12,b:4},{op:'-',a:12,b:6},{op:'-',a:12,b:8},
+    {op:'-',a:13,b:3},{op:'-',a:13,b:4},{op:'-',a:13,b:7},{op:'-',a:13,b:6},{op:'-',a:13,b:9},{op:'-',a:13,b:8}]},
+  'A189a':{ title:'Subtraction 11 (From numbers up to 20)', family:'sub-inline', count:11, problems:[
+    {op:'-',a:13,b:4},{op:'-',a:13,b:6},{op:'-',a:13,b:9},{op:'-',a:13,b:5},{op:'-',a:13,b:8},
+    {op:'-',a:14,b:5},{op:'-',a:14,b:3},{op:'-',a:14,b:7},{op:'-',a:14,b:6},{op:'-',a:14,b:8},{op:'-',a:14,b:9}]},
+  'A190a':{ title:'Subtraction 11 (From numbers up to 20)', family:'sub-inline', count:11, problems:[
+    {op:'-',a:14,b:4},{op:'-',a:14,b:8},{op:'-',a:14,b:6},{op:'-',a:14,b:5},{op:'-',a:14,b:9},
+    {op:'-',a:15,b:5},{op:'-',a:15,b:3},{op:'-',a:15,b:7},{op:'-',a:15,b:9},{op:'-',a:15,b:6},{op:'-',a:15,b:8}]},
   'E73b': { title:'Addition of Fractions 7', family:'fraction', count:6, problems:[
     {op:'frac',a:[2,1,2],b:[0,9,10]},{op:'frac',a:[0,1,6],b:[0,3,10]},{op:'frac',a:[0,2,3],b:[4,5,12]},
     {op:'frac',a:[0,1,6],b:[5,1,14]},{op:'frac',a:[0,3,10],b:[0,1,14]},{op:'frac',a:[7,1,10],b:[0,4,15]}]}
@@ -1675,6 +1692,19 @@ const KUMON_TEST_DATA=[
   /* E-series fraction addition — student answers transcribed from the scans.
      E71a/E72a are all-correct; E73b #2 and #5 were left un-reduced (14/30, 26/70),
      so the deterministic key marks them wrong — exercising the ✗ path on fractions. */
+  /* A-series Subtraction 11 — student answers transcribed from the 2026-07-05
+     scans. A186a #9 (11−7→7), A187a #1 (11−3→9), A189a #4 (13−5→9) and
+     #5 (13−8→7) are wrong on the page, exercising the red-✗ path. */
+  {ws:'A186a',name:'Tricha',       lvl:'A', date:'2026-06-15', resub:false, op:'sub',
+   items:[[10,3,'7'],[10,4,'6'],[10,7,'3'],[10,5,'5'],[10,9,'1'],[11,2,'9'],[11,5,'6'],[11,3,'8'],[11,7,'7'],[11,9,'2'],[11,8,'3']]},
+  {ws:'A187a',name:null,           lvl:'A', date:null,         resub:false, op:'sub',
+   items:[[11,3,'9'],[11,6,'5'],[11,4,'7'],[11,8,'3'],[11,9,'2'],[12,2,'10'],[12,5,'7'],[12,3,'9'],[12,6,'6'],[12,8,'4'],[12,9,'3']]},
+  {ws:'A188a',name:null,           lvl:'A', date:null,         resub:false, op:'sub',
+   items:[[12,3,'9'],[12,7,'5'],[12,4,'8'],[12,6,'6'],[12,8,'4'],[13,3,'10'],[13,4,'9'],[13,7,'6'],[13,6,'7'],[13,9,'4'],[13,8,'5']]},
+  {ws:'A189a',name:null,           lvl:'A', date:null,         resub:false, op:'sub',
+   items:[[13,4,'9'],[13,6,'7'],[13,9,'4'],[13,5,'9'],[13,8,'7'],[14,5,'9'],[14,3,'11'],[14,7,'7'],[14,6,'8'],[14,8,'6'],[14,9,'5']]},
+  {ws:'A190a',name:null,           lvl:'A', date:null,         resub:false, op:'sub',
+   items:[[14,4,'10'],[14,8,'6'],[14,6,'8'],[14,5,'9'],[14,9,'5'],[15,5,'10'],[15,3,'12'],[15,7,'8'],[15,9,'6'],[15,6,'9'],[15,8,'7']]},
   {ws:'E71a', name:'Quinn',        lvl:'E', date:'2026-07-02', resub:false, op:'frac',
    items:[[[2,1,2],[0,1,4],'2 3/4'],[[3,1,2],[0,1,8],'3 5/8'],[[4,1,2],[0,3,8],'4 7/8'],
           [[4,1,4],[0,3,8],'4 5/8'],[[5,1,4],[0,5,8],'5 7/8'],[[6,3,4],[0,1,8],'6 7/8']]},
@@ -1712,6 +1742,7 @@ const _fdisp=f=>{ const w=f[0],n=f[1],d=f[2]; if(n===0)return String(w); const f
 function _kmExpected(op,it){
   if(op==='lit')return it[1];
   if(op==='add')return KumonMath.compute({op:'+',a:it[0],b:it[1]});
+  if(op==='sub')return KumonMath.compute({op:'-',a:it[0],b:it[1]});
   if(op==='mul')return KumonMath.compute({op:'*',a:it[0],b:it[1]});
   if(op==='div')return KumonMath.compute({op:'/',a:it[0],b:it[1]});
   if(op==='expr')return KumonMath.compute({op:'expr',expr:it[0]});
@@ -1721,6 +1752,7 @@ function _kmExpected(op,it){
 function _kmDisp(op,it){
   if(op==='lit')return it[0]+' =';
   if(op==='add')return '  '+it[0]+'\n+ '+it[1]+'\n=';
+  if(op==='sub')return it[0]+' − '+it[1]+' =';
   if(op==='mul')return '  '+it[0]+'\n× '+it[1]+'\n=';
   if(op==='div')return it[1]+' ) '+it[0]+' =';
   if(op==='expr')return it[0]+' =';
@@ -1747,7 +1779,9 @@ function kumonBuildProblems(S){
    scan, header low on the page, OCR unavailable, or file: protocol). */
 const KUMON_BATCH_LAYOUTS={
   6:['B53a','D11a','D102a','C61a','G81a','I121a'],   // 2026-07-08 six-worksheet batch
-  3:['E71a','E72a','E73b']                            // handwritten fraction set (E71a→E73b)
+  3:['E71a','E72a','E73b'],                           // handwritten fraction set (E71a→E73b)
+  5:['A186a','A187a','A188a','A189a','A190a'],        // 2026-07-05 Subtraction 11 batch
+  8:['A186a','A187a','A188a','A189a','A190a','E71a','E72a','E73b']  // 2026-07-05 combined batch
 };
 function kumonBatchLayoutId(sheet){
   if(!sheet||!sheet.__multiPage) return null;
@@ -2207,6 +2241,7 @@ function loadImg(src){return new Promise((res,rej)=>{
    numbering (down the left column, then the right). */
 const MARK_LAYOUT={
   'fraction':      {cols:1, ax:[0.66],       y0:0.165, y1:0.655},  // E71a/E72a/E73b
+  'sub-inline':    {cols:1, ax:[0.53],       y0:0.145, y1:0.688},  // A186a–A190a
   'signed-ops':    {cols:1, ax:[0.60],       y0:0.475, y1:0.925},  // G81a (worked Ex box above)
   'linear':        {cols:1, ax:[0.72],       y0:0.610, y1:0.640},  // I121a single worked answer
   'column-add':    {cols:2, ax:[0.44,0.92],  y0:0.175, y1:0.590},  // B53a
@@ -2248,6 +2283,13 @@ const KUMON_MARK_ANCHORS={
   'G81a':[{x:.54,y:.535},{x:.50,y:.585},{x:.55,y:.655},{x:.53,y:.700},
           {x:.54,y:.760},{x:.50,y:.810},{x:.54,y:.865},{x:.58,y:.925}],
   'I121a':[{x:.79,y:.925}],
+  /* A186a–A190a: 11 evenly spaced horizontal rows; answers end just left of
+     x≈0.52, so each mark point sits at x .53 beside the written digit(s). */
+  'A186a':[{x:.53,y:.170},{x:.53,y:.219},{x:.53,y:.268},{x:.53,y:.318},{x:.53,y:.367},{x:.53,y:.416},{x:.53,y:.465},{x:.53,y:.515},{x:.53,y:.564},{x:.53,y:.613},{x:.53,y:.663}],
+  'A187a':[{x:.53,y:.170},{x:.53,y:.219},{x:.53,y:.268},{x:.53,y:.318},{x:.53,y:.367},{x:.53,y:.416},{x:.53,y:.465},{x:.53,y:.515},{x:.53,y:.564},{x:.53,y:.613},{x:.53,y:.663}],
+  'A188a':[{x:.53,y:.170},{x:.53,y:.219},{x:.53,y:.268},{x:.53,y:.318},{x:.53,y:.367},{x:.53,y:.416},{x:.53,y:.465},{x:.53,y:.515},{x:.53,y:.564},{x:.53,y:.613},{x:.53,y:.663}],
+  'A189a':[{x:.53,y:.166},{x:.53,y:.215},{x:.53,y:.264},{x:.53,y:.314},{x:.53,y:.363},{x:.53,y:.412},{x:.53,y:.461},{x:.53,y:.511},{x:.53,y:.560},{x:.53,y:.609},{x:.53,y:.659}],
+  'A190a':[{x:.55,y:.170},{x:.54,y:.219},{x:.54,y:.268},{x:.54,y:.318},{x:.54,y:.367},{x:.55,y:.416},{x:.55,y:.465},{x:.54,y:.515},{x:.54,y:.564},{x:.54,y:.613},{x:.54,y:.663}],
   'E71a':[{x:.60,y:.175},{x:.64,y:.275},{x:.60,y:.365},{x:.62,y:.455},{x:.64,y:.545},{x:.62,y:.635}],
   'E72a':[{x:.66,y:.180},{x:.70,y:.280},{x:.64,y:.365},{x:.74,y:.465},{x:.68,y:.555},{x:.70,y:.650}],
   'E73b':[{x:.66,y:.135},{x:.54,y:.240},{x:.75,y:.335},{x:.69,y:.435},{x:.59,y:.530},{x:.68,y:.630}]
@@ -2775,6 +2817,7 @@ function intakeError(file,reason,fix){
   state.errors.push({file,reason,fix,t:new Date().toTimeString().slice(0,8)});
   renderErrors();
   log('REJECTED '+file+' — '+reason,'er');
+  try{ showToast('Not gradable: '+file+' — '+reason+' Other files continue normally.','See details','intake'); }catch(_){}
 }
 function renderErrors(){
   const box=$('#intakeErrors'); if(!box)return;
@@ -2930,7 +2973,7 @@ async function ingestZip(f){
   }
   if(eocd<0){ intakeError(f.name,'File has a .zip extension but no ZIP directory was found — corrupt archive or a renamed file.','Rebuild the archive (right-click → Compress) and upload again.'); return; }
   const count=dv.getUint16(eocd+10,true); let off=dv.getUint32(eocd+16,true);
-  let n=0, skipped=0;
+  let n=0, skipped=0, meta=0;
   for(let e=0;e<count;e++){
     if(dv.getUint32(off,true)!==0x02014b50) break;
     const method=dv.getUint16(off+10,true), csize=dv.getUint32(off+20,true),
@@ -2938,7 +2981,13 @@ async function ingestZip(f){
           lho=dv.getUint32(off+42,true);
     const name=new TextDecoder().decode(buf.slice(off+46,off+46+nlen));
     off+=46+nlen+elen+clen;
-    if(!/\.(png|jpe?g|pdf)$/i.test(name)||name.endsWith('/')){ if(!name.endsWith('/')&&!name.startsWith('__MACOSX'))skipped++; continue; }
+    // macOS archive metadata is not a worksheet: __MACOSX resource forks
+    // (._foo.pdf AppleDouble files carry a .pdf extension but are NOT PDFs)
+    // and .DS_Store. Skip them silently — rejecting each one buries the real
+    // files under a wall of bogus "corrupt PDF" errors.
+    const base=name.split('/').pop();
+    if(name.includes('__MACOSX')||base.startsWith('._')||base==='.DS_Store'){ meta++; continue; }
+    if(!/\.(png|jpe?g|pdf)$/i.test(name)||name.endsWith('/')){ if(!name.endsWith('/'))skipped++; continue; }
     const lnlen=dv.getUint16(lho+26,true), lelen=dv.getUint16(lho+28,true);
     const start=lho+30+lnlen+lelen;
     let data=buf.slice(start,start+csize);
@@ -2951,8 +3000,8 @@ async function ingestZip(f){
     else await ingestImage({name},data.buffer, name.match(/png$/i)?'image/png':'image/jpeg');
     n++;
   }
-  if(n===0){ intakeError(f.name,'Valid ZIP, but it contains no worksheet files ('+skipped+' non-worksheet entr'+(skipped===1?'y':'ies')+' skipped).','Include .pdf / .png / .jpg scans inside the archive.'); return; }
-  log('ZIP '+f.name+': ingested '+n+' entr'+(n===1?'y':'ies')+(skipped?' · skipped '+skipped+' non-worksheet':'')+'.','ok');
+  if(n===0){ intakeError(f.name,'Valid ZIP, but it contains no worksheet files ('+skipped+' non-worksheet entr'+(skipped===1?'y':'ies')+' skipped'+(meta?(', '+meta+' macOS metadata entr'+(meta===1?'y':'ies')+' ignored'):'')+').','Include .pdf / .png / .jpg scans inside the archive.'); return; }
+  log('ZIP '+f.name+': ingested '+n+' entr'+(n===1?'y':'ies')+(skipped?' · skipped '+skipped+' non-worksheet':'')+(meta?' · ignored '+meta+' macOS metadata entr'+(meta===1?'y':'ies'):'')+'.','ok');
 }
 
 /* ══════════════ agent pipeline ══════════════ */
@@ -3043,9 +3092,9 @@ let bocrWorker=null, bocrLoadTried=false, bocrPaths=null;
 function loadScript(src){return new Promise((res,rej)=>{const el=document.createElement('script');el.src=src;el.onload=res;el.onerror=()=>rej(new Error('script load failed: '+src));document.head.appendChild(el);});}
 // Candidate locations — supports both a vendor/ folder AND flat, same-folder
 // files with either dot or underscore names (tesseract.min.js / tesseract_min.js).
-const OCR_LIBS   =['vendor/tesseract_min.js','vendor/tesseract.min.js','tesseract_min.js','tesseract.min.js'];
-const OCR_WORKERS=['vendor/worker_min.js','vendor/worker.min.js','worker_min.js','worker.min.js'];
-const OCR_CORES  =['vendor/','vendor/core/','./',''];
+const OCR_LIBS   =['vendor/tesseract.min.js','vendor/tesseract_min.js','tesseract.min.js','tesseract_min.js'];
+const OCR_WORKERS=['vendor/worker.min.js','vendor/worker_min.js','worker.min.js','worker_min.js'];
+const OCR_CORES  =['vendor/core/','vendor/','./',''];   // core folder is the primary engine location
 const OCR_LANGS  =['vendor','vendor/','.','./'];
 async function ensureTesseract(){
   if(typeof Tesseract!=='undefined') return;
@@ -3411,6 +3460,7 @@ async function runAgent(){
       sheet.notFixable=true; sheet.notFixableReason='no answers on the page — worksheet is blank/unanswered';
       state.rel=0; updateRel(); setStage('ocr','err');
       log(sheet.id+' → '+(knownId||'page')+' recognized but BLANK (no student answers) — routed to human grading','wr');
+      showToast(sheet.id+' ('+(knownId||'page')+') needs hand-grading — no student answers on the page. Continuing with the rest.','Open review','review');
       renderQueue(); renderManualReview(); renderSheetList(); saveState(); continue;
     }
     if(sheet.source==='synthetic' || sheet.__knownGraded){
@@ -3473,7 +3523,13 @@ async function runAgent(){
       setStage('print','ok'); setStage('return','ok');
       sheet.status='graded';                                   // lands in the output queue so it can be printed
       state.rel=0; updateRel();                                // not an auto-graded result
-      log(sheet.id+' → auto-oriented and queued to the output for printing (not scored — grade by hand)','wr');
+      const why = sheet.__multiPage
+        ? (KUMON_BATCH_LAYOUTS[sheet.__pageCount]
+            ? 'page '+((sheet.__pageIndex||0)+1)+' of this '+sheet.__pageCount+'-page batch is not a registered worksheet'
+            : 'no batch layout is registered for a '+sheet.__pageCount+'-page file — add one to KUMON_BATCH_LAYOUTS')
+        : 'header/file name did not match a registered worksheet';
+      sheet.printOnlyReason=why;
+      log(sheet.id+' → NOT auto-graded ('+why+') — auto-oriented and queued to the output for printing; grade by hand or register the worksheet and re-run','wr');
       agentGuide(who+': auto-oriented and sent to the output/print queue — grade by hand.',false);
       renderQueue(); renderSheetList(); saveState(); continue;
     }
@@ -3548,7 +3604,9 @@ async function runAgent(){
     renderQueue(); renderSheetList(); renderReports(); saveState();
     }catch(err){
       const reason=(err&&err.message)||String(err);
-      try{ sheet.status='review'; }catch(_){}
+      // MARK the failed sheet (never silent): flagged + reason on the card,
+      // routed to Needs grading, and the batch keeps going.
+      try{ sheet.status='review'; sheet.gradeFailed=true; sheet.gradeFailReason=reason; }catch(_){}
       state.rel=0; try{ updateRel(); }catch(_){}
       skipped.push({id:sheet.id,reason});
       try{ setStage('ocr','err'); }catch(_){}
@@ -3908,7 +3966,11 @@ $('#btnRmSelQ').onclick=()=>{ const ids=new Set(selectedIn('queued').map(s=>s.id
   if(!ids.size && state.selected){ const cur=state.sheets.find(x=>x.id===state.selected&&!x.archived&&x.status!=='graded'); if(cur) ids.add(cur.id); }
   if(!ids.size){alert('Click a sheet (or tick its checkbox) first, then press Remove selected.');return;}
   removeSheets(s=>ids.has(s.id),'Remove selected queued'); };
-$('#btnRmSelG').onclick=()=>{ const ids=new Set(selectedIn('graded').map(s=>s.id)); if(!ids.size){alert('Tick at least one sheet first.');return;} removeSheets(s=>ids.has(s.id),'Remove selected graded'); };
+$('#btnRmSelG').onclick=()=>{ const ids=new Set(selectedIn('graded').map(s=>s.id));
+  // single-file removal: if nothing is ticked, use the sheet currently selected in the list
+  if(!ids.size && state.selected){ const cur=state.sheets.find(x=>x.id===state.selected&&!x.archived&&x.status==='graded'); if(cur) ids.add(cur.id); }
+  if(!ids.size){alert('Click a sheet (or tick its checkbox) first, then press Remove selected.');return;}
+  removeSheets(s=>ids.has(s.id),'Remove selected graded'); };
 function archiveSheets(pred,label){
   const hit=state.sheets.filter(s=>pred(s)&&!s.archived);
   if(!hit.length){ log(label+': nothing to archive.','wr'); return; }
@@ -3931,12 +3993,18 @@ $('#btnArSelQ').onclick=()=>{ const ids=new Set(selectedIn('queued').map(s=>s.id
   if(!ids.size && state.selected){ const cur=state.sheets.find(x=>x.id===state.selected&&!x.archived&&x.status!=='graded'); if(cur) ids.add(cur.id); }
   if(!ids.size){alert('Click a sheet (or tick its checkbox) first, then press Archive selected.');return;}
   archiveSheets(s=>ids.has(s.id),'Archive selected queued'); };
-$('#btnArSelG').onclick=()=>{ const ids=new Set(selectedIn('graded').map(s=>s.id)); if(!ids.size){alert('Tick at least one sheet first.');return;} archiveSheets(s=>ids.has(s.id),'Archive selected graded'); };
+$('#btnArSelG').onclick=()=>{ const ids=new Set(selectedIn('graded').map(s=>s.id));
+  if(!ids.size && state.selected){ const cur=state.sheets.find(x=>x.id===state.selected&&!x.archived&&x.status==='graded'); if(cur) ids.add(cur.id); }
+  if(!ids.size){alert('Click a sheet (or tick its checkbox) first, then press Archive selected.');return;}
+  archiveSheets(s=>ids.has(s.id),'Archive selected graded'); };
 $('#btnArAllQ').onclick=()=>archiveSheets(s=>s.status!=='graded','Archive all queued');
 $('#btnArAllG').onclick=()=>archiveSheets(s=>s.status==='graded','Archive all graded');
 $('#btnReSelA').onclick=()=>{ const ids=new Set(selectedIn('archived').map(s=>s.id)); if(!ids.size){alert('Tick at least one sheet first.');return;} restoreSheets(s=>ids.has(s.id),'Restore selected'); };
 $('#btnReAllA').onclick=()=>restoreSheets(()=>true,'Restore all');
-$('#btnRmSelA').onclick=()=>{ const ids=new Set(selectedIn('archived').map(s=>s.id)); if(!ids.size){alert('Tick at least one sheet first.');return;} removeSheets(s=>ids.has(s.id),'Remove selected archived'); };
+$('#btnRmSelA').onclick=()=>{ const ids=new Set(selectedIn('archived').map(s=>s.id));
+  if(!ids.size && state.selected){ const cur=state.sheets.find(x=>x.id===state.selected&&x.archived); if(cur) ids.add(cur.id); }
+  if(!ids.size){alert('Click a sheet (or tick its checkbox) first, then press Remove selected.');return;}
+  removeSheets(s=>ids.has(s.id),'Remove selected archived'); };
 $('#btnDlA').onclick=()=>downloadSelected('archived');
 $('#btnRmAllQ').onclick=removeEverything;
 $('#btnRmAllG').onclick=removeEverything;
@@ -3961,7 +4029,7 @@ async function detectRunMode(){
   }
   // OCR files may live in vendor/ OR directly beside index.html — probe both.
   const probe=async list=>{ for(const u of list){ try{ const r=await fetch(u,{method:'HEAD'}); if(r.ok) return true; }catch(e){} } return false; };
-  const vendor=await probe(['vendor/tesseract_min.js','vendor/tesseract.min.js','tesseract_min.js','tesseract.min.js','vendor/eng.traineddata','eng.traineddata']);
+  const vendor=await probe(['vendor/tesseract.min.js','vendor/tesseract_min.js','tesseract.min.js','tesseract_min.js','vendor/eng.traineddata','eng.traineddata']);
   if(vendor) show('ok','<b>Full mode.</b> OCR engine found — uploaded-scan reading is active, all local.');
   else show('warn','<b>OCR engine not found.</b> All features work except reading uploaded scans — add the engine files (or a <code>vendor/</code> folder) to enable it.');
   // optional handwriting model: if vendor/ai/ isn't installed, skip the VLM tier so scans go straight to Tesseract (no per-sheet failure noise)
